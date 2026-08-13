@@ -1,0 +1,5 @@
+node_modules
+.pdeck
+trust.json
+*.png
+*.log
