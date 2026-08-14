@@ -1,6 +1,6 @@
 # Phaser Flight Deck
 
-> **v0.3.2** · 43 tests · MIT License · Node ≥ 20
+> **v0.4.0** · 45 tests · MIT License · Node ≥ 20
 
 Agent toolchain for **Phaser 4 web games**: project health checks, v4 API static scanning,
 an API-truth oracle over the bundled type definitions, a narrow-to-broad verification ladder,
@@ -149,9 +149,9 @@ pdeck help
 ## 测试
 
 ```bash
-npm test                                          # 40 项：信封/规则/探测/合成夹具/init 门控
+npm test                                          # 45 项 = 40 CLI 回归 + 5 适配器一致性
 PDECK_TEST_FIXTURE=<Phaser项目路径> npm test      # 附带真实项目集成（verify 阶梯、serve 生命周期、视觉自比对、模拟门）
-# 未设置夹具时集成测试自动跳过（30 通过 / 10 跳过）
+# 未设置夹具时集成测试自动跳过（35 通过 / 10 跳过）
 ```
 
 ## 目录
@@ -166,7 +166,9 @@ extensions/              Pi 薄封装扩展（参数映射+确认门+Envelope �
 skills/                  自研主技能 + 官方技能 vendor
 probes/                  运行时探针契约（window.__pdeck，pdeck run probe 消费）
 templates/project/       init 脚手架模板（Phaser 4.2.1 钉版）
-tests/                   node --test 回归（40 项）
+tests/                   node --test 回归（45 项：cli.test + adapters.test）
+scripts/                 generate-adapters.mjs（多宿主适配器生成器，零依赖）
+dist/                    生成的宿主适配器包（已提交，安装方式见 dist/README.md）
 .github/workflows/       CI：push/PR 自动跑 npm test
 ```
 
