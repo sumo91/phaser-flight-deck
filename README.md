@@ -1,8 +1,18 @@
 # Phaser Flight Deck
 
-Agent 工具链：为 **Phaser 4 网页游戏项目**提供健康检查、v4 API 静态扫描、API 事实预言机、
-从窄到宽验证阶梯、dev server 生命周期与无头浏览器观察。
-零依赖 CLI 执行核心 + 单一声明式命令契约 + Pi 薄封装扩展 + 项目技能与运行时探针。
+> **v0.3.2** · 43 tests · MIT License · Node ≥ 20
+
+Agent toolchain for **Phaser 4 web games**: project health checks, v4 API static scanning,
+an API-truth oracle over the bundled type definitions, a narrow-to-broad verification ladder,
+dev-server lifecycle with headless-browser observation, visual regression, and a balance-simulation gate.
+Zero-dependency CLI execution core + a single declarative command registry + a thin Pi extension
+wrapper + project skills and a runtime probe.
+
+*English readers: every command prints a bounded JSON envelope (`--json`) with a
+PASSED/FAILED/INCONCLUSIVE/CANCELLED verdict, evidence facts, and deterministic next steps.*
+
+为 **Phaser 4 网页游戏项目**提供健康检查、v4 API 静态扫描、API 事实预言机、
+从窄到宽验证阶梯、dev server 生命周期与无头浏览器观察、视觉回归与平衡模拟门。
 
 设计原则（来自 Godot Flight Deck / Phaser Project Toolkit 实战）：
 
@@ -13,23 +23,68 @@ Agent 工具链：为 **Phaser 4 网页游戏项目**提供健康检查、v4 API
   不把"未验证的启动"或"别人的服务器响应"说成成功
 - **边界**：基建与验证在界内；玩法判断在界外
 
+## Requirements
+
+| 需求 | 必需/可选 | 说明 |
+|---|---|---|
+| Node.js ≥ 20 | 必需 | CLI 与扩展运行时 |
+| Google Chrome 或 Edge | 可选 | `verify` / `run snapshot|console|observe` / `baseline` / `visual-test` 的浏览器证据需要；缺失时优雅降级为 INCONCLUSIVE + 安装指引 |
+| playwright-core | 可选 | 首次 `npm install` 一并安装；缺失时同上降级 |
+| git | 可选 | 仅 `vendor-skills` 需要 |
+| tsx（项目内） | 可选 | 项目的 `.ts` 模拟 harness 需要 |
+
+支持平台：Windows / macOS / Linux（Windows 的端口与进程管理有专门实现，其余平台有通用回退）。
+
+## Installation（三选一）
+
+**方式 A：直接使用（零安装）**
+
+```bash
+node <本目录>/cli/pdeck.mjs <command> ...      # 无需 npm install，核心命令零依赖
+npm install                                    # 仅浏览器相关命令需要（playwright-core）
+```
+
+**方式 B：全局命令（npm link 或 PATH）**
+
+```bash
+cd <本目录> && npm install && npm link          # 获得全局 pdeck 命令
+pdeck doctor <项目目录>
+pdeck version
+```
+
+**方式 C：Pi Agent 集成（Agent 工具 + 技能）**
+
+```bash
+pi install <本目录>                            # 全局；或 cd <项目> && pi install -l <本目录> 项目级
+# 或手工注册：settings.json 的 extensions 数组加入 <本目录>/extensions/phaser-flight-deck.ts，
+# skills 数组加入 <本目录>/skills/phaser4-flight-deck
+```
+
+安装后 Pi 会话获得 11 个工具与 3 个命令（见 [Pi 集成](#pi-集成)）。
+**注意**：新工具需要 `/reload` 或重启 Pi 才会出现在会话工具清单里（见 [运维规则](#运维规则)）。
+
 ## 快速开始
 
 ```bash
-cd <工具目录> && npm install          # 首次（playwright-core，浏览器动作需要）
-node <工具目录>/cli/pdeck.mjs doctor <项目目录>
-node <工具目录>/cli/pdeck.mjs check <项目目录>
-node <工具目录>/cli/pdeck.mjs api query fillPoints <项目目录> --depth 3
-node <工具目录>/cli/pdeck.mjs api exists setTintFill <项目目录>
-node <工具目录>/cli/pdeck.mjs verify <项目目录>          # 完整验证阶梯（需要系统 Chrome/Edge）
-node <工具目录>/cli/pdeck.mjs run serve <项目目录>       # dev server 生命周期
-node <工具目录>/cli/pdeck.mjs run snapshot http://localhost:5173/
-node <工具目录>/cli/pdeck.mjs run console http://localhost:5173/ --seconds 5
-node <工具目录>/cli/pdeck.mjs run probe http://localhost:5173/ --query '{"state":"state"}'
-node <工具目录>/cli/pdeck.mjs evidence <项目目录>
-node <工具目录>/cli/pdeck.mjs init <新目录>              # dry-run 脚手架
-node <工具目录>/cli/pdeck.mjs help
+pdeck doctor <项目>                              # 项目健康：版本对照/工具链/core 隔离
+pdeck check <项目>                               # v4 API 静态扫描 + 纹理 key 校验
+pdeck api query fillPoints <项目> --depth 3      # d.ts 预言机
+pdeck api exists setTintFill <项目>              # 存在性 + 已移除 API 交叉核对
+pdeck verify <项目>                              # 验证阶梯：tsc→构建→真实浏览器→截图证据
+pdeck run serve <项目>                           # dev server 生命周期（端口预检+双栈实测）
+pdeck run observe <项目>                         # 复合观察：按需起服务→console→自动清理
+pdeck run snapshot http://localhost:5173/
+pdeck run console http://localhost:5173/ --seconds 5
+pdeck baseline demo <项目>                       # 视觉回归基线
+pdeck visual-test demo <项目>                    # 与基线像素比对
+pdeck simulate <项目>                            # 平衡模拟门（需 test/simulate 契约 + 剖面）
+pdeck regression <项目>                          # 一条命令跑完整全量回归 + json/md 报告
+pdeck init <新目录>                              # 保守脚手架（dry-run 默认，--apply 提交）
+pdeck evidence <项目>                            # 验证证据索引
+pdeck help
 ```
+
+所有命令支持 `--json`（机器可读信封）与 `--timeout`。完整契约：`pdeck describe <command> --json`。
 
 ## 命令
 
@@ -37,7 +92,7 @@ node <工具目录>/cli/pdeck.mjs help
 |---|---|---|
 | `pdeck doctor` | 项目健康：Phaser 识别、版本对照（静默期感知）、工具链、core 隔离 | 只读 |
 | `pdeck check` | 19 条 v4 API 规则扫描 + 纹理 key 校验（动态工厂误报抑制） | 只读 |
-| `pdeck api` | d.ts 预言机：query / exists（含已移除 API 交叉核对）/ version | 只读 |
+| `pdeck api` | d.ts 预言机：query / exists（含已移除 API 交叉核对）/ version / describe | 只读 |
 | `pdeck verify` | 验证阶梯：版本→tsc→构建→真实浏览器→截图证据（.pdeck/） | generated-write |
 | `pdeck run` | serve（端口预检+双栈实测）/ snapshot / console（良性404过滤+环境噪音归类）/ probe / watch / **observe（自动起停复合观察）** | generated-write |
 | `pdeck baseline` / `visual-test` | 视觉回归：基线截图 + 浏览器解码逐像素比对（阈值/容差可调） | generated-write |
@@ -47,9 +102,12 @@ node <工具目录>/cli/pdeck.mjs help
 | `pdeck init` | 保守脚手架（dry-run 默认，--apply 提交；从不代跑 npm install） | project-write |
 | `pdeck vendor-skills` | vendor 官方 skills（git clone 钉版 tag） | host-write |
 
+风险分级与 Pi 确认门：只读（none）直接执行；generated-write 首次触发时三选一授权
+（永久/本次会话/拒绝）；project-write 与 host-write 同样走授权。见 [Pi 集成](#pi-集成)。
+
 ## Pi 集成
 
-安装后（`pi install <工具目录路径>`，或按 settings.json 的 extensions 数组注册绝对路径），Agent 获得工具：
+安装后 Agent 获得工具：
 
 `pdeck_project` · `pdeck_check` · `pdeck_api` · `pdeck_validate` · `pdeck_run` · `pdeck_init` ·
 `pdeck_evidence` · `pdeck_vendor` · `pdeck_visual` · `pdeck_simulate` · `pdeck_regression`，
@@ -67,7 +125,7 @@ node <工具目录>/cli/pdeck.mjs help
 
 ## 运维规则
 
-1. **新工具 = 新会话**：扩展新增/修改工具后，当前会话的工具集是启动快照，需 `/reload` 或新会话生效（CLI 每次都是新进程，命令层改动立即生效）。
+1. **新工具 = 新会话**：扩展新增/修改工具后，当前会话的工具集是启动快照，需 `/reload` 或重启 Pi 生效（CLI 每次都是新进程，命令层改动立即生效）。
 2. **工具目录路径别移动**：settings.json 里是绝对路径注册；移动后需同步修改 `extensions`/`skills` 数组。
 3. **撤销授权**：删除工具目录 `trust.json`（或其中对应条目）；`/pdeck-authorize` 可查看/调整授权状态。
 4. **vendor-skills 需要 GitHub 可达**：网络受限环境会快速 INCONCLUSIVE；可在可达环境执行后复制 `skills/vendor/`，或按 `skills/vendor/README.md` 手动操作。
@@ -76,7 +134,9 @@ node <工具目录>/cli/pdeck.mjs help
 ## 测试
 
 ```bash
-npm test   # node --test：37 项（信封/规则/探测/合成夹具/init 门控 + 真实项目 verify 阶梯、serve 生命周期、视觉自比对、模拟门双路径）
+npm test                                          # 43 项：信封/规则/探测/合成夹具/init 门控
+PDECK_TEST_FIXTURE=<Phaser项目路径> npm test      # 附带真实项目集成（verify 阶梯、serve 生命周期、视觉自比对、模拟门）
+# 未设置夹具时集成测试自动跳过（33 通过 / 10 跳过）
 ```
 
 ## 目录
@@ -84,17 +144,30 @@ npm test   # node --test：37 项（信封/规则/探测/合成夹具/init 门�
 ```
 cli/pdeck.mjs            零依赖 CLI 入口（参数解析/嵌套动作路由/信封包装）
 cli/result-envelope.mjs  有界证据优先信封（与 Pi 共用）
-cli/lib/                 项目探测 / registry 对照 / v4 规则表 / 浏览器驱动 / 静态服务器
-cli/commands/            doctor / check / api / verify / run / init / evidence / vendor
+cli/lib/                 项目探测 / registry 对照 / v4 规则表 / 浏览器驱动 / 静态服务器 / 视觉比对 / 控制台分类 / 子进程
+cli/commands/            doctor / check / api / verify / run / init / evidence / vendor / visual / simulate / regression
 registry/commands.mjs    单一契约：CLI 选项、命令、Pi 字段 schema、风险分级
 extensions/              Pi 薄封装扩展（参数映射+确认门+Envelope 透传）
 skills/                  自研主技能 + 官方技能 vendor
 probes/                  运行时探针契约（window.__pdeck，pdeck run probe 消费）
 templates/project/       init 脚手架模板（Phaser 4.2.1 钉版）
-tests/                   node --test 回归（31 项）
+tests/                   node --test 回归（43 项）
+.github/workflows/       CI：push/PR 自动跑 npm test
 ```
 
 ## 实战排障记录
 
-见 [CHANGELOG.md](CHANGELOG.md) 0.2.0 节——Windows spawn/shell、netstat 双栈、vite [::1] 绑定、
-端口共存歧义、npm.cmd 进程孤儿等 5 个真实环境坑的定位与对策。
+见 [CHANGELOG.md](CHANGELOG.md)——Windows spawn/shell、netstat 双栈、vite [::1] 绑定、
+端口共存歧义、npm.cmd 进程孤儿、模型回退与授权模型演进等真实环境坑的定位与对策。
+
+## Contributing
+
+欢迎提交 issue 与 PR。约定：
+
+- 所有逻辑改动必须过 `npm test`；影响命令契约的改动同步更新 `registry/commands.mjs`（单一契约源）
+- 新增命令遵循：CLI 命令模块（cli/commands/）→ 注册表（registry）→ pdeck.mjs 路由 → 测试 → CHANGELOG
+- 风险分级只增不减：新写入类操作必须声明 risk 并在扩展确认门中处理
+
+## License
+
+[MIT](LICENSE) © 2026 Phaser Flight Deck contributors
