@@ -15,8 +15,9 @@ import { detectProject } from '../cli/lib/phaser-project.mjs';
 import { quietPeriodDays } from '../cli/lib/registry-lookup.mjs';
 
 const CLI = fileURLToPath(new URL('../cli/pdeck.mjs', import.meta.url));
-const FIXTURE = 'D:/00_Ai/Deepseek/WebGames/Phaser4Games/SwordIdle';
-const hasFixture = existsSync(join(FIXTURE, 'node_modules', 'phaser', 'package.json'));
+const FIXTURE = process.env.PDECK_TEST_FIXTURE ?? null;
+const hasFixture = Boolean(FIXTURE && existsSync(join(FIXTURE, 'node_modules', 'phaser', 'package.json')));
+// 集成测试夹具：设置环境变量 PDECK_TEST_FIXTURE 指向一个已安装依赖的 Phaser 项目（含 node_modules/phaser）
 
 function pdeck(args, cwd = process.cwd(), timeoutMs = 60000) {
   return execFileSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf8', timeout: timeoutMs });
@@ -381,10 +382,12 @@ test('run observe: 临时起服务→观察→自动清理', { skip: !hasFixture
   const out = pdeck(['run', 'observe', '--port', port, '--seconds', '3', FIXTURE], FIXTURE, 300000);
   assert.match(out, /verdict: PASSED/);
   assert.match(out, /lifecycle/);
-  // 端口应已释放（LISTENING 状态消失；TIME_WAIT 属正常残留）
-  const netstat = execSync('netstat -ano -p TCP', { encoding: 'utf8' });
-  const stillListening = netstat.split('\n').some((l) => l.includes(':' + port) && l.includes('LISTENING'));
-  assert.equal(stillListening, false, `端口 ${port} 不应再有 LISTENING 进程`);
+  // 端口应已释放（仅 Windows 用 netstat 验证；其它平台跳过）
+  if (process.platform === 'win32') {
+    const netstat = execSync('netstat -ano -p TCP', { encoding: 'utf8' });
+    const stillListening = netstat.split('\n').some((l) => l.includes(':' + port) && l.includes('LISTENING'));
+    assert.equal(stillListening, false, `端口 ${port} 不应再有 LISTENING 进程`);
+  }
 });
 
 // ===== R2：file:// CORS 针对性提示 =====

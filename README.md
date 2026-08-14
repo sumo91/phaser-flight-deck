@@ -49,7 +49,7 @@ node <工具目录>/cli/pdeck.mjs help
 
 ## Pi 集成
 
-安装后（`pi install D:/00_Ai/Tools/PhaserFlightDeck`），Agent 获得工具：
+安装后（`pi install <工具目录路径>`，或按 settings.json 的 extensions 数组注册绝对路径），Agent 获得工具：
 
 `pdeck_project` · `pdeck_check` · `pdeck_api` · `pdeck_validate` · `pdeck_run` · `pdeck_init` ·
 `pdeck_evidence` · `pdeck_vendor` · `pdeck_visual` · `pdeck_simulate` · `pdeck_regression`，
