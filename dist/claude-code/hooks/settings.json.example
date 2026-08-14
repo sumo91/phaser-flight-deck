@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node <本目录>/dist/claude-code/hooks/pdeck-confirm.mjs"
+          }
+        ]
+      }
+    ]
+  }
+}

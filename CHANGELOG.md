@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 — 多宿主适配器（2026-08-14）
+
+- **`npm run generate`**：从单一契约源（registry/commands.mjs + 主技能）生成三宿主适配器包（dist/ 已提交）：
+  - **Claude Code**：skills + `/pdeck-regression|verify|doctor|check` 4 个 slash commands + PreToolUse hooks（拦截 init --apply/vendor-skills/baseline/simulate-profile 写入类命令，ask 决策）
+  - **Cursor**：`.cursor/commands/` 4 个命令入口 + 技能（无 hooks → prompt 约定确认门）
+  - **Codex**：`$HOME/.agents/skills/` 技能包
+  - **Pi**：已有（11 工具 + trust.json 授权）
+- **MANIFEST.json**：15 个生成文件 SHA-256 可校验
+- **一致性测试**（5 项）：命令覆盖率（每个 CLI 命令都在技能命令表中）、宿主差异断言、MANIFEST 哈希、hooks 拦截清单
+- 适配器是提示层不是逻辑层——CLI 唯一执行核心；manual-only，不自动触发
+- 安装说明见 dist/README.md；测试总数 45（40 CLI + 5 适配器）
+
 ## 0.3.2 — 修订计划 R1-R5（2026-08-14）
 
 - **R1 `run observe`**：复合观察动作——按需起服务（复用已有则不碰）→ console 观察 →

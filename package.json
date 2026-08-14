@@ -1,6 +1,6 @@
 {
   "name": "phaser-flight-deck",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "private": true,
   "description": "Agent-tooling flight deck for Phaser 4 web-game projects: zero-dependency CLI execution core, single declarative command registry, Pi extension wrapper, project skills and runtime probe.",
   "type": "module",
@@ -24,7 +24,8 @@
     "pdeck": "./cli/pdeck.mjs"
   },
   "scripts": {
-    "test": "node --test tests/cli.test.mjs"
+    "generate": "node scripts/generate-adapters.mjs",
+    "test": "node scripts/generate-adapters.mjs && node --test tests/cli.test.mjs tests/adapters.test.mjs"
   },
   "engines": {
     "node": ">=20"

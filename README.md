@@ -123,6 +123,21 @@ pdeck help
   d.ts 残留声明 ≠ 运行时可用、vite 只绑 [::1]、端口共存歧义）+ 平衡模拟与浏览器冒烟模式
 - `skills/vendor/`：`pdeck vendor-skills` 从 phaserjs/phaser 钉版 tag 引入官方技能（4.0 基线）
 
+## 多宿主适配器
+
+`npm run generate` 从单一契约源（`registry/commands.mjs` + 主技能）生成各宿主适配器包（`dist/`，已提交）：
+
+| 宿主 | 包内容 | 确认门 |
+|---|---|---|
+| **Claude Code** | skills + `/pdeck-*` 4 个 slash commands + PreToolUse hooks | hooks 拦截写入类命令（最强） |
+| **Cursor** | `.cursor/commands/` 4 个命令入口 + 技能 | prompt 约定（无 hooks） |
+| **Codex** | `$HOME/.agents/skills/` 技能包 | prompt 约定 |
+| **Pi** | extensions（11 工具 + trust.json 授权） | 工具内确认门（已有） |
+
+适配器是提示层，不是逻辑层——CLI 永远是唯一执行核心；manual-only，不自动触发。
+安装方式见 `dist/README.md`；一致性由 `tests/adapters.test.mjs` 守护
+（命令覆盖率、宿主差异、MANIFEST 哈希、hooks 拦截清单）。
+
 ## 运维规则
 
 1. **新工具 = 新会话**：扩展新增/修改工具后，当前会话的工具集是启动快照，需 `/reload` 或重启 Pi 生效（CLI 每次都是新进程，命令层改动立即生效）。
