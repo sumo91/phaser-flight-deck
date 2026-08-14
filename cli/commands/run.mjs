@@ -5,12 +5,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { detectProject } from '../lib/phaser-project.mjs';
 import { launchHeadless, openPage, sleep } from '../lib/browser.mjs';
-import { splitErrors, collectBounded } from '../lib/console-filter.mjs';
+import { splitErrors, splitWarnings, collectBounded } from '../lib/console-filter.mjs';
 import { envelope, fact, inconclusiveEnvelope } from '../result-envelope.mjs';
 
 const SERVER_STATE = '.pdeck/server.json';
+const PROBE_FILE = fileURLToPath(new URL('../../probes/flight-deck-probe.js', import.meta.url));
 
 function serverStatePath(root) {
   return join(root, SERVER_STATE);
@@ -267,14 +269,16 @@ export async function runConsole(args, options) {
     const { page, consoleErrors, pageErrors, consoleWarnings } = await openPage(target.launched.browser, url);
     await sleep(Math.min(Number(seconds) || 5, 30) * 1000);
     const errors = splitErrors(consoleErrors);
+    const warnings = splitWarnings(consoleWarnings);
     const verdict = pageErrors.length || errors.real.length ? 'FAILED' : 'PASSED';
     const facts = [];
     if (pageErrors.length) facts.push(fact('page_errors', 'run.console', `页面未捕获异常 ${pageErrors.length} 条`, { actual: collectBounded(pageErrors) }));
     if (errors.real.length) facts.push(fact('console_errors', 'run.console', `控制台错误 ${errors.real.length} 条`, { actual: collectBounded(errors.real) }));
     if (errors.benign.length) facts.push(fact('benign_errors', 'run.console', `良性资源 404 ${errors.benign.length} 条（favicon 等，不计入失败）`, { actual: collectBounded(errors.benign, 4) }));
-    if (consoleWarnings.length) facts.push(fact('console_warnings', 'run.console', `控制台警告 ${consoleWarnings.length} 条`, { actual: collectBounded(consoleWarnings, 6) }));
+    if (warnings.real.length) facts.push(fact('console_warnings', 'run.console', `控制台警告 ${warnings.real.length} 条`, { actual: collectBounded(warnings.real, 6) }));
+    if (warnings.envNoise.length) facts.push(fact('env_noise', 'run.console', `环境噪音 ${warnings.envNoise.length} 条（无头 SwiftShader GPU 驱动消息，真机无此项，已归类不干扰裁决）`));
     if (!facts.some((f) => f.classification.includes('errors'))) facts.push(fact('clean', 'run.console', `观察 ${seconds}s：无页面异常、无实质性控制台错误`));
-    return envelope(verdict, verdict === 'FAILED' ? '发现实质性错误（见 facts）' : '控制台观察干净（良性 404 除外）', {
+    return envelope(verdict, verdict === 'FAILED' ? '发现实质性错误（见 facts）' : '控制台观察干净（良性 404 与环境噪音除外）', {
       kind: 'run.console',
       facts,
     });
@@ -313,7 +317,8 @@ export async function runProbe(args, options) {
     }, payload);
     if (!result.probeInstalled) {
       return inconclusiveEnvelope('run.probe', '页面未安装运行时探针（window.__pdeck 不存在）', [
-        '在游戏入口 import 工具目录 probes/flight-deck-probe.js 并调用 installProbe(game, state)',
+        `参考实现: ${PROBE_FILE}（复制/参考后在游戏入口调用 installProbe(game, state)）`,
+        '或手写最小契约: window.__pdeck = { query: { state: () => ({ level: 1 }) } }（query 下任意只读函数即可被 --query 调用）',
       ]);
     }
     return envelope('PASSED', '探针查询完成', {
@@ -346,11 +351,13 @@ export async function runWatch(args, options) {
       process.stdout.write(`[watch ${status.t}s] errors=${status.consoleErrors}/${status.pageErrors} warnings=${status.warnings}\n`);
     }
     const errors = splitErrors(consoleErrors);
+    const warnings = splitWarnings(consoleWarnings);
     const verdict = pageErrors.length || errors.real.length ? 'FAILED' : 'PASSED';
     const facts = [];
     if (pageErrors.length) facts.push(fact('page_errors', 'run.watch', `页面未捕获异常 ${pageErrors.length} 条`, { actual: collectBounded(pageErrors) }));
     if (errors.real.length) facts.push(fact('console_errors', 'run.watch', `控制台错误 ${errors.real.length} 条`, { actual: collectBounded(errors.real) }));
-    if (consoleWarnings.length) facts.push(fact('console_warnings', 'run.watch', `警告 ${consoleWarnings.length} 条`, { actual: collectBounded(consoleWarnings, 6) }));
+    if (warnings.real.length) facts.push(fact('console_warnings', 'run.watch', `警告 ${warnings.real.length} 条`, { actual: collectBounded(warnings.real, 6) }));
+    if (warnings.envNoise.length) facts.push(fact('env_noise', 'run.watch', `环境噪音 ${warnings.envNoise.length} 条（无头 GPU 驱动消息，已归类不干扰裁决）`));
     if (!facts.some((f) => f.classification.includes('errors'))) facts.push(fact('clean', 'run.watch', `观察 ${Math.round(durationMs / 1000)}s：无错误`));
     return envelope(verdict, verdict === 'FAILED' ? '观察窗口内出现错误' : '观察窗口干净', { kind: 'run.watch', facts });
   } catch (error) {

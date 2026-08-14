@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { envelope, renderEnvelope, boundedText, failureEnvelope } from '../cli/result-envelope.mjs';
 import { scanSource, textureKeyFindings, V4_RULES } from '../cli/lib/rules-v4.mjs';
-import { splitErrors } from '../cli/lib/console-filter.mjs';
+import { splitErrors, splitWarnings } from '../cli/lib/console-filter.mjs';
 import { pruneEvidenceFiles } from '../cli/commands/verify.mjs';
 import { detectProject } from '../cli/lib/phaser-project.mjs';
 import { quietPeriodDays } from '../cli/lib/registry-lookup.mjs';
@@ -162,6 +162,16 @@ test('splitErrors: favicon 404 归为良性', () => {
     'GET /favicon.ico 404',
   ]);
   assert.equal(benign.length, 2);
+  assert.equal(real.length, 1);
+});
+
+test('splitWarnings: 观察者环境噪音单独归类', () => {
+  const { envNoise, real } = splitWarnings([
+    '[.WebGL-0x123]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels',
+    'Deprecation warning: use new API',
+    'GL Driver Message (this message will no longer repeat)',
+  ]);
+  assert.equal(envNoise.length, 2);
   assert.equal(real.length, 1);
 });
 
@@ -326,6 +336,39 @@ console.log(JSON.stringify({ hours: h, level: 100 + h, region: 5, regionName: 'f
       assert.equal(err.status, 1, 'FAILED 裁决退出码为 1');
       assert.match(err.stdout, /verdict: FAILED/);
       assert.match(err.stdout, /band_violation/);
+      return true;
+    },
+  );
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('simulate: 泛型契约——农场字段名同样生成 band（外部反馈 #2）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-farm-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { phaser: '4.2.1' } }));
+  mkdirSync(join(dir, 'test'));
+  const harness = `const h = Number(process.env.SIM_HOURS || 48);
+console.log(JSON.stringify({ hours: h, crops: h * 10, coins: h * 100, happiness: 42 }));`;
+  writeFileSync(join(dir, 'test', 'simulate.mjs'), harness);
+  const prof = pdeck(['simulate-profile', '--hours', '5', dir], dir, 120000);
+  assert.match(prof, /verdict: PASSED/);
+  const profile = JSON.parse(readFileSync(join(dir, '.pdeck', 'simulate.json'), 'utf8'));
+  assert.deepEqual(Object.keys(profile.bands).sort(), ['coins', 'crops', 'happiness']);
+  const ok = pdeck(['simulate', '--hours', '5', dir], dir, 120000);
+  assert.match(ok, /verdict: PASSED/);
+  assert.match(ok, /crops/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('simulate: 解析失败附原始输出尾部（外部反馈 #4）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-badout-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { phaser: '4.2.1' } }));
+  mkdirSync(join(dir, 'test'));
+  writeFileSync(join(dir, 'test', 'simulate.mjs'), `console.log('not json at all');`);
+  assert.throws(
+    () => pdeck(['simulate-profile', '--hours', '5', dir], dir, 120000),
+    (err) => {
+      assert.equal(err.status, 1);
+      assert.match(err.stdout, /原始输出尾部: not json at all/);
       return true;
     },
   );

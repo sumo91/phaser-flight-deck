@@ -78,8 +78,8 @@ export const PI_FIELDS = Object.freeze({
   severity: field('enum', { values: ['warn', 'error'], description: 'Failure severity threshold for check/doctor' }),
   file: field('string', { maxLength: 512, description: 'Check a single file instead of the whole project' }),
   mode: field('enum', {
-    values: ['query', 'exists', 'version'],
-    description: 'query: full-text search in phaser.d.ts; exists: boolean existence fact; version: installed engine version',
+    values: ['query', 'exists', 'version', 'describe'],
+    description: 'query: full-text search in phaser.d.ts; exists: boolean existence fact; version: installed engine version; describe: pdeck command contract (usage/options/positionals)',
   }),
   query: field('string', { maxLength: 200, description: 'Search text for api query/exists modes' }),
   depth: field('integer', { minimum: 1, maximum: 60, description: 'API query result detail lines' }),

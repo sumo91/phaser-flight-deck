@@ -262,7 +262,7 @@ export default function phaserFlightDeck(pi: ExtensionAPI) {
     name: "pdeck_api",
     label: "Phaser API",
     description:
-      "Query the bundled phaser.d.ts type definitions (the API oracle). mode=query searches declarations with doc context; mode=exists answers existence and cross-checks removed-API rules (types may contain stale declarations); mode=version reports the installed engine version.",
+      "Query the bundled phaser.d.ts type definitions (the API oracle). mode=query searches declarations with doc context; mode=exists answers existence and cross-checks removed-API rules (types may contain stale declarations); mode=version reports the installed engine version; mode=describe returns a pdeck command's contract (usage/options/positionals) — query field carries the command name.",
     parameters: Type.Object({
       mode: fieldSchema("mode"),
       query: fieldSchema("query"),
@@ -271,6 +271,21 @@ export default function phaserFlightDeck(pi: ExtensionAPI) {
       depth: fieldSchema("depth"),
     }),
     async execute(_toolCallId, params: ToolParams, _signal, _onUpdate, _ctx: ExtensionContext) {
+      if (params.mode === "describe") {
+        const command = params.query ?? "simulate";
+        const described = await new Promise<string>((resolvePromise) => {
+          execFile(
+            process.execPath,
+            [CLI_FILE, "describe", command, "--json"],
+            { timeout: 30000, maxBuffer: 256 * 1024, windowsHide: true },
+            (_error, stdout, stderr) => resolvePromise((stdout || stderr || "").trim()),
+          );
+        });
+        const { env, ok } = parseEnvelope(described);
+        if (!ok || !env || typeof env !== "object" || !env.name) return toolResult(described, "none");
+        const text = `command: ${env.name}\nsummary: ${env.summary}\nusage: ${env.usage}\noptions: ${(env.options ?? []).join(", ")}\npositionals: ${(env.positionals ?? []).map((p: any) => `${p.name}${p.required ? "(必需)" : "(可选)"}`).join(", ")}`;
+        return { content: [{ type: "text" as const, text: text.slice(0, 3000) }], details: { verdict: "PASSED", kind: "api-describe", command: env.name } };
+      }
       const output = await runCli("api", params, params.timeout ?? 60);
       return toolResult(output);
     },

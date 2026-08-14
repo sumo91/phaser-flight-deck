@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.1 — 外部反馈修复（2026-08-14）
+
+来自另一项目 Agent 的真实使用反馈（6 个磨合点），逐条修复：
+
+1. **契约靠猜 → tsx 自动回退**：.mjs harness 直跑 node 遇到模块解析错误（Cannot find module）
+   且项目装有 tsx 时自动重试；无 tsx 时错误信息给出两个明确选项（装 tsx 或自包含）。
+2. **词汇表硬编码 → 泛型契约**：band 字段不再限 {level,region,realm,totalKills}——报告里
+   **任何数值字段**（除 hours 与 _ 前缀）自动生成 band。农场游戏用 {crops,coins,happiness}
+   同样生效（有测试）。旧战斗字段向后兼容。
+3. **提示指向不存在的入口 → 契约内联**：所有 simulate 错误信息内联契约三行说明；
+   `pdeck_api` 新增 mode=describe（query 传命令名返回 usage/options/positionals）。
+4. **失败不给原始输出 → 尾部进摘要**：解析失败时 summary 直接带原始 stdout/stderr 尾部（≤400 字）。
+5. **探针路径找不到 → 实际绝对路径 + 内联最小契约**：probe 提示用 import.meta.url 打印
+   **本机真实路径**，并给出三行手写最小契约（window.__pdeck.query 下任意只读函数）。
+6. **观察者自扰 → 环境噪音归类**：GL Driver Message / GPU stall ReadPixels / SwiftShader
+   等无头观察产物单独归为 env_noise 事实，不再混入 console_warnings 干扰判断
+   （verify/console/watch 三处一致）。
+
+测试 40 项全绿（新增：环境噪音分类、农场字段泛型契约、解析失败尾部可见）。
+
 ## 0.3.0 — Phase 3：视觉回归 + 平衡模拟门（2026-08-13）
 
 - **`pdeck baseline <name>`**：截取视觉回归基线（.pdeck/baselines/<name>.png；无 --url 时服务 dist，

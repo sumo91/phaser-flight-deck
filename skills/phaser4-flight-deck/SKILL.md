@@ -66,7 +66,9 @@ pdeck simulate .        # 平衡模拟门（test/simulate 契约 + 剖面区间�
 
 **平衡模拟契约**（pdeck simulate 消费）：项目提供 `test/simulate.mjs|ts`，读 `SIM_HOURS` 环境变量，
 模拟挂机后向 stdout 最后一行输出 JSON 报告：
-`{"hours":48,"level":293,"region":8,"regionName":"...","realm":9,"totalKills":12345,"gold":...}`。
+`{"hours":48,"crops":123,"coins":456}` —— **任何数值字段（除 hours 与 _ 前缀）都会自动生成 band 区间**，
+战斗/农场/经营游戏各自命名均可。.ts 版本可正常 import 项目核心模块（tsx 运行）；.mjs 遇到
+相对 import 失败且项目装有 tsx 时会自动回退重试。
 先 `pdeck simulate-profile` 生成 ±30% 区间（.pdeck/simulate.json），此后数值改动用
 `pdeck simulate` 做**平衡回归门**：越界即 FAILED，刻意调整后重新 profile。
 
