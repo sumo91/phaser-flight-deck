@@ -134,9 +134,9 @@ pdeck help
 ## 测试
 
 ```bash
-npm test                                          # 43 项：信封/规则/探测/合成夹具/init 门控
+npm test                                          # 40 项：信封/规则/探测/合成夹具/init 门控
 PDECK_TEST_FIXTURE=<Phaser项目路径> npm test      # 附带真实项目集成（verify 阶梯、serve 生命周期、视觉自比对、模拟门）
-# 未设置夹具时集成测试自动跳过（33 通过 / 10 跳过）
+# 未设置夹具时集成测试自动跳过（30 通过 / 10 跳过）
 ```
 
 ## 目录
@@ -151,7 +151,7 @@ extensions/              Pi 薄封装扩展（参数映射+确认门+Envelope �
 skills/                  自研主技能 + 官方技能 vendor
 probes/                  运行时探针契约（window.__pdeck，pdeck run probe 消费）
 templates/project/       init 脚手架模板（Phaser 4.2.1 钉版）
-tests/                   node --test 回归（43 项）
+tests/                   node --test 回归（40 项）
 .github/workflows/       CI：push/PR 自动跑 npm test
 ```
 
