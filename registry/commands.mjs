@@ -45,7 +45,7 @@ export const CLI_COMMANDS = Object.freeze({
   check: command('Static-scan source for removed/changed Phaser v4 APIs and unresolved texture keys', 'pdeck check [project] [--file PATH] [--json] [--severity warn|error]', ['json', 'project', 'file', 'severity', 'timeout'], [positional('project')]),
   api: command('Query the bundled Phaser type definitions (d.ts oracle)', 'pdeck api <query|exists|version> [query-text] [project] [--depth N] [--json]', ['json', 'project', 'depth', 'timeout'], [positional('mode', true), positional('query'), positional('project')]),
   verify: command('Run the narrow-to-broad verification ladder: version consistency → tsc → build → real browser (canvas/console/input) → screenshot evidence', 'pdeck verify [project] [--json] [--timeout SECONDS] [--no-capture]', ['json', 'project', 'timeout', 'capture'], [positional('project')]),
-  run: command('Dev server lifecycle and headless browser observation', 'pdeck run <serve|snapshot|console|probe|watch> [url|project] [--json] [--timeout SECONDS]', ['json', 'project', 'url', 'output', 'port', 'stop', 'seconds', 'viewport', 'timeout', 'query'], [positional('action', true, 'serve|snapshot|console|probe|watch'), positional('target', false, 'serve: 项目路径；其余动作: 目标 URL')], {
+  run: command('Dev server lifecycle and headless browser observation', 'pdeck run <serve|snapshot|console|probe|watch|observe> [url|project] [--json] [--timeout SECONDS]', ['json', 'project', 'url', 'output', 'port', 'stop', 'seconds', 'viewport', 'timeout', 'query'], [positional('action', true, 'serve|snapshot|console|probe|watch|observe'), positional('target', false, 'serve/observe: 项目路径；其余动作: 目标 URL')], {
     defaultAction: 'serve',
     actions: {
       serve: { usage: 'pdeck run serve [project] [--port N] [--stop]', options: ['project', 'port', 'stop', 'json'], minimumPositionals: 1, maximumPositionals: 2 },
@@ -60,6 +60,7 @@ export const CLI_COMMANDS = Object.freeze({
   'visual-test': command('Compare the current screen against a visual baseline (pixel diff, browser-decoded)', 'pdeck visual-test <name> [project] [--url URL] [--tolerance N] [--threshold N] [--viewport WxH]', ['json', 'project', 'url', 'viewport', 'tolerance', 'threshold', 'timeout'], [positional('name', true, '基准名'), positional('project')]),
   simulate: command('Run the project balance-simulation harness and check against the .pdeck profile bands (balance regression gate)', 'pdeck simulate [project] [--hours N] [--json] [--timeout SECONDS]', ['json', 'project', 'hours', 'timeout'], [positional('project')]),
   'simulate-profile': command('Generate the balance profile (.pdeck/simulate.json, ±30% bands) from one simulation run', 'pdeck simulate-profile [project] [--hours N] [--json] [--timeout SECONDS]', ['json', 'project', 'hours', 'timeout'], [positional('project')]),
+  regression: command('Run the full regression composite: doctor → check → verify → simulate → visual-test → one bounded report (.pdeck/reports/regression-*.json|md)', 'pdeck regression [project] [--json] [--timeout SECONDS]', ['json', 'project', 'timeout'], [positional('project')]),
   evidence: command('Inspect bounded verification evidence freshness (read-only)', 'pdeck evidence [project] [--limit N] [--json]', ['json', 'project', 'limit', 'timeout'], [positional('project')]),
   'vendor-skills': command('Vendor official Phaser skills from the phaserjs/phaser repo at a pinned tag (host-write)', 'pdeck vendor-skills [--tag v4.2.1] [--json]', ['json', 'tag', 'timeout'], []),
 });
@@ -98,8 +99,8 @@ export const PI_FIELDS = Object.freeze({
   threshold: field('number', { minimum: 0, maximum: 255, description: 'Visual per-channel difference threshold (default 16)' }),
   hours: field('integer', { minimum: 1, maximum: 720, description: 'Simulation hours (default 48)' }),
   runAction: field('enum', {
-    values: ['serve', 'snapshot', 'console', 'probe', 'watch'],
-    description: 'pdeck_run action: serve dev server lifecycle; snapshot screenshot; console error collection; probe runtime state via window.__pdeck; watch streamed observation',
+    values: ['serve', 'snapshot', 'console', 'probe', 'watch', 'observe'],
+    description: 'pdeck_run action: serve dev server lifecycle; snapshot screenshot; console error collection; probe runtime state via window.__pdeck; watch streamed observation; observe console-style observation with auto server lifecycle (start if needed, cleanup only what it started)',
   }),
   visualAction: field('enum', {
     values: ['baseline', 'test'],
@@ -123,6 +124,7 @@ export const TOOL_FAMILIES = Object.freeze({
   pdeck_vendor: 'host-write',          // 写工具自身 skills/vendor
   pdeck_visual: 'generated-write',     // baseline/visual-test 写 .pdeck/baselines 与 captures
   pdeck_simulate: 'none',              // 运行项目自己的测试 harness（同 npm test 信任级别）；profile 动作由扩展按 generated-write 处理
+  pdeck_regression: 'generated-write', // 组合回归：verify/visual 证据 + 报告写入 .pdeck
 });
 
 // 命令 → 执行模块

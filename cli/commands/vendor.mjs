@@ -2,24 +2,14 @@
 // 从 phaserjs/phaser 仓库指定 tag 复制 skills/ 到本工具 skills/vendor/。
 // 官方技能基于 4.0 基线编写；与 4.2.1 实测对照使用（见自研主技能）。
 
-import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, rmSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { runProcess } from '../lib/process.mjs';
 import { envelope, fact, inconclusiveEnvelope } from '../result-envelope.mjs';
 
 const VENDOR_DIR = fileURLToPath(new URL('../../skills/vendor/', import.meta.url));
-
-function runGit(args, cwd) {
-  return new Promise((resolvePromise) => {
-    const child = spawn('git', args, { cwd, shell: process.platform === 'win32', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stderr = '';
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('error', (error) => resolvePromise({ ok: false, error: `git 不可用: ${error.message}` }));
-    child.on('close', (code) => resolvePromise({ ok: code === 0, error: code === 0 ? null : stderr.slice(0, 300) }));
-  });
-}
 
 export async function vendorSkills(args, options) {
   const { tag = 'v4.2.1', timeout = 120 } = options;
@@ -29,9 +19,19 @@ export async function vendorSkills(args, options) {
   const temp = join(tmpdir(), `phaser-skills-${Date.now()}`);
   mkdirSync(temp, { recursive: true });
   try {
-    const clone = await runGit(['clone', '--depth', '1', '--branch', tag, 'https://github.com/phaserjs/phaser', temp], undefined);
-    if (!clone.ok) {
-      return inconclusiveEnvelope('vendor-skills', `git clone 失败: ${clone.error}`, ['确认 git 可用且网络可达 github.com，重试']);
+    // git 自带 60s 超时（网络不可达时快速失败，不挂满整个命令超时）
+    const clone = await runProcess('git', ['clone', '--depth', '1', '--branch', tag, 'https://github.com/phaserjs/phaser', temp], {
+      cwd: tmpdir(), timeoutSeconds: Math.min(60, timeout),
+    });
+    if (clone.timedOut || clone.code !== 0) {
+      const netError = /connection was reset|connection refused|unable to access|recv failure|could not resolve/i.test(clone.stderr);
+      return inconclusiveEnvelope('vendor-skills', netError
+        ? `无法访问 github.com（网络受限）: ${clone.stderr.trim().slice(0, 150)}`
+        : `git clone 失败: ${(clone.stderr || '').trim().slice(0, 150) || `exit ${clone.code}`}`, [
+        netError
+          ? '在可访问 GitHub 的环境中执行 pdeck vendor-skills，或按 skills/vendor/README.md 手动复制官方技能目录'
+          : '确认 git 可用后重试',
+      ]);
     }
     const srcSkills = join(temp, 'skills');
     if (!existsSync(srcSkills)) {

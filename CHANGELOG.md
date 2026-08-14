@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.2 — 修订计划 R1-R5（2026-08-14）
+
+- **R1 `run observe`**：复合观察动作——按需起服务（复用已有则不碰）→ console 观察 →
+  **自己起的必自动清理**（finally 保证）。生命周期以 lifecycle 事实记录在案。
+- **R2 file:// CORS 直达提示**：console/observe 发现 CORS/file:///ERR_FAILED 特征错误时，
+  nextSteps 直接给出"用 HTTP URL"的出路（有真实 file:// 测试用例）。
+- **R3 `pdeck regression`**：全量回归组合——doctor→check→verify→simulate→visual 串行，
+  聚合成一份有界信封 + `.pdeck/reports/regression-*.json|md` 报告；缺失前置的阶段如实
+  INCONCLUSIVE（不伪造）；simulate 时长自动取剖面记录值（修掉了 48h 默认值导致的假失败）。
+  实测 SwordIdle 五阶段 20s 全绿。
+- **R4 vendor-skills 加固**：git 自带 60s 超时 + 网络受限（Connection reset 等）快速
+  INCONCLUSIVE 并给出手动替代出路（本机 GitHub 不可达，待可达环境执行）。
+- **R5 运维规则文档化**：新工具=新会话、目录勿移动、trust.json 撤销、vendor 需 GitHub、
+  端口冲突策略——写入 README 与主技能。
+- Pi 新工具 `pdeck_regression`（generated-write）。测试 43 项全绿。
+
 ## 0.3.1 — 外部反馈修复（2026-08-14）
 
 来自另一项目 Agent 的真实使用反馈（6 个磨合点），逐条修复：

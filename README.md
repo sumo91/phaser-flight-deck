@@ -39,9 +39,10 @@ node <工具目录>/cli/pdeck.mjs help
 | `pdeck check` | 19 条 v4 API 规则扫描 + 纹理 key 校验（动态工厂误报抑制） | 只读 |
 | `pdeck api` | d.ts 预言机：query / exists（含已移除 API 交叉核对）/ version | 只读 |
 | `pdeck verify` | 验证阶梯：版本→tsc→构建→真实浏览器→截图证据（.pdeck/） | generated-write |
-| `pdeck run` | serve（端口预检+双栈实测）/ snapshot / console（良性404过滤）/ probe / watch | generated-write |
+| `pdeck run` | serve（端口预检+双栈实测）/ snapshot / console（良性404过滤+环境噪音归类）/ probe / watch / **observe（自动起停复合观察）** | generated-write |
 | `pdeck baseline` / `visual-test` | 视觉回归：基线截图 + 浏览器解码逐像素比对（阈值/容差可调） | generated-write |
 | `pdeck simulate` / `simulate-profile` | 平衡模拟门：项目 test/simulate 契约 + 剖面区间回归检查 | 只读 / 生成写 |
+| `pdeck regression` | **全量回归组合**：doctor→check→verify→simulate→visual 串行 → 一份有界信封 + json/md 报告 | generated-write |
 | `pdeck evidence` | 验证证据索引（裁决/新鲜度/耗时） | 只读 |
 | `pdeck init` | 保守脚手架（dry-run 默认，--apply 提交；从不代跑 npm install） | project-write |
 | `pdeck vendor-skills` | vendor 官方 skills（git clone 钉版 tag） | host-write |
@@ -51,7 +52,7 @@ node <工具目录>/cli/pdeck.mjs help
 安装后（`pi install D:/00_Ai/Tools/PhaserFlightDeck`），Agent 获得工具：
 
 `pdeck_project` · `pdeck_check` · `pdeck_api` · `pdeck_validate` · `pdeck_run` · `pdeck_init` ·
-`pdeck_evidence` · `pdeck_vendor` · `pdeck_visual` · `pdeck_simulate`，
+`pdeck_evidence` · `pdeck_vendor` · `pdeck_visual` · `pdeck_simulate` · `pdeck_regression`，
 快捷命令 `/pdeck-doctor` · `/pdeck-verify` · `/pdeck-authorize`。
 
 **授权模型**：写入类操作首次触发时三选一（永久授权写入 trust.json 可撤销 / 仅本次会话 / 拒绝，
@@ -63,6 +64,14 @@ node <工具目录>/cli/pdeck.mjs help
   （addCanvas 大纹理 GPU ReadPixels 卡死、纹理按规格缓存、场景生命周期、AudioContext 调度死循环、
   d.ts 残留声明 ≠ 运行时可用、vite 只绑 [::1]、端口共存歧义）+ 平衡模拟与浏览器冒烟模式
 - `skills/vendor/`：`pdeck vendor-skills` 从 phaserjs/phaser 钉版 tag 引入官方技能（4.0 基线）
+
+## 运维规则
+
+1. **新工具 = 新会话**：扩展新增/修改工具后，当前会话的工具集是启动快照，需 `/reload` 或新会话生效（CLI 每次都是新进程，命令层改动立即生效）。
+2. **工具目录路径别移动**：settings.json 里是绝对路径注册；移动后需同步修改 `extensions`/`skills` 数组。
+3. **撤销授权**：删除工具目录 `trust.json`（或其中对应条目）；`/pdeck-authorize` 可查看/调整授权状态。
+4. **vendor-skills 需要 GitHub 可达**：网络受限环境会快速 INCONCLUSIVE；可在可达环境执行后复制 `skills/vendor/`，或按 `skills/vendor/README.md` 手动操作。
+5. **端口冲突策略**：`run serve` 预检拒绝外来占用（避免 localhost URL 歧义），换 `--port` 或先确认占用者；`run observe` 会自动起停自己的服务，不触碰既有进程。
 
 ## 测试
 

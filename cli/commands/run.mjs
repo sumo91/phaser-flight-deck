@@ -202,6 +202,64 @@ export async function runServe(args, options) {
   });
 }
 
+// URL 形态诊断提示（R2）：file:// 会被浏览器 CORS 拦截，给出直达出路
+function urlHint(errors) {
+  const lines = Array.isArray(errors) ? errors : [];
+  if (lines.some((l) => /CORS|file:\/\/|ERR_FAILED/i.test(l))) {
+    return ['目标应为 HTTP URL（如 http://localhost:5173/）——file:// 路径会被浏览器 CORS 拦截，先 pdeck run serve 起服务再观察'];
+  }
+  return [];
+}
+
+// R1：observe 复合动作——按需起服务 → 观察 → 自己起的必清理（复用已有服务器时不碰）
+export async function runObserve(args, options) {
+  const { project, url, seconds = 5, port } = options;
+  let targetUrl = url ?? null;
+  let stopNeeded = false;
+  let lifecycleFact = null;
+  if (!targetUrl) {
+    const proj = detectProject(project ?? process.cwd());
+    if (!proj.found) return inconclusiveEnvelope('run.observe', `不是可识别的 Phaser 项目: ${proj.reason}`, ['pdeck run observe <url> 直接观察运行中的页面，或传项目路径']);
+    const statePath = serverStatePath(proj.root);
+    let running = false;
+    if (existsSync(statePath)) {
+      try {
+        const st = JSON.parse(readFileSync(statePath, 'utf8'));
+        if ((!port || st.port === port) && pidAlive(st.pid)) { running = true; targetUrl = st.url; lifecycleFact = `复用已在运行的 dev server（pid ${st.pid}）`; }
+      } catch { /* 状态文件损坏，走启动 */ }
+    }
+    if (!running) {
+      const served = await runServe([], { project: proj.root, port });
+      if (served.verdict !== 'PASSED') return served;
+      const startedFact = served.facts?.find((f) => f.classification === 'server_started');
+      targetUrl = startedFact?.actual?.url ?? `http://localhost:${port ?? 5173}/`;
+      stopNeeded = true;
+      lifecycleFact = '本次观察由 observe 临时起服务，结束后自动清理';
+    }
+  }
+  try {
+    const observation = await runConsole([], { url: targetUrl, seconds });
+    observation.kind = 'run.observe';
+    if (lifecycleFact) {
+      observation.facts.push(fact('lifecycle', 'run.observe', lifecycleFact));
+      observation.summary += `；${lifecycleFact}`;
+    }
+    if (observation.verdict === 'FAILED') {
+      const realErrors = (observation.facts ?? []).filter((f) => f.classification === 'console_errors' || f.classification === 'page_errors')
+        .flatMap((f) => (Array.isArray(f.actual) ? f.actual : []));
+      observation.nextSteps = [...(observation.nextSteps ?? []), ...urlHint(realErrors)];
+    }
+    return observation;
+  } finally {
+    if (stopNeeded) {
+      const proj = detectProject(project ?? process.cwd());
+      if (proj.found) {
+        await runServe([], { project: proj.root, port, stop: true }).catch(() => {});
+      }
+    }
+  }
+}
+
 async function waitReachable(url, maxSeconds) {
   // vite 在 Windows 可能只绑 IPv6 [::1]（localhost 解析顺序）——双栈探测
   const port = url.split(':').pop().replace(String.fromCharCode(47), '');
@@ -281,6 +339,7 @@ export async function runConsole(args, options) {
     return envelope(verdict, verdict === 'FAILED' ? '发现实质性错误（见 facts）' : '控制台观察干净（良性 404 与环境噪音除外）', {
       kind: 'run.console',
       facts,
+      nextSteps: verdict === 'FAILED' ? urlHint([...pageErrors, ...errors.real]) : [],
     });
   } catch (error) {
     return inconclusiveEnvelope('run.console', `观察失败: ${error.message}`);
@@ -371,10 +430,10 @@ export async function run(args, options) {
   const action = options.action ?? args[0] ?? 'serve';
   const restArgs = args.slice(args[0] === action ? 1 : 0);
   const restOptions = { ...options };
-  // 第二个位置参数语义：serve → project；其余动作 → url
+  // 第二个位置参数语义：serve/observe → project；其余动作 → url
   if (restArgs.length) {
-    if (action === 'serve' && !restOptions.project) restOptions.project = restArgs[0];
-    else if (action !== 'serve' && !restOptions.url) restOptions.url = restArgs[0];
+    if ((action === 'serve' || action === 'observe') && !restOptions.project) restOptions.project = restArgs[0];
+    else if (action !== 'serve' && action !== 'observe' && !restOptions.url) restOptions.url = restArgs[0];
   }
   switch (action) {
     case 'serve': return runServe(restArgs, restOptions);
@@ -382,7 +441,8 @@ export async function run(args, options) {
     case 'console': return runConsole(restArgs, restOptions);
     case 'probe': return runProbe(restArgs, restOptions);
     case 'watch': return runWatch(restArgs, restOptions);
+    case 'observe': return runObserve(restArgs, restOptions);
     default:
-      return inconclusiveEnvelope('run', `未知 run 动作: ${action}`, ['可用：serve | snapshot | console | probe | watch']);
+      return inconclusiveEnvelope('run', `未知 run 动作: ${action}`, ['可用：serve | snapshot | console | probe | watch | observe']);
   }
 }

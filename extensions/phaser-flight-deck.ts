@@ -444,6 +444,24 @@ export default function phaserFlightDeck(pi: ExtensionAPI) {
     },
   });
 
+  pi.registerTool({
+    name: "pdeck_regression",
+    label: "Phaser Regression",
+    description:
+      "Run the full regression composite in one call: doctor → check → verify (tsc/build/browser) → simulate (balance bands, skipped when no harness/profile) → visual-test (newest baseline, skipped when none) — aggregated into one bounded envelope plus .pdeck/reports/regression-*.json and .md reports. Skipped stages are honestly INCONCLUSIVE, never fabricated. generated-write risk.",
+    parameters: Type.Object({
+      project: fieldSchema("project"),
+      timeout: fieldSchema("timeout"),
+    }),
+    async execute(_toolCallId, params: ToolParams, _signal, _onUpdate, ctx: ExtensionContext) {
+      const gate = await requireConfirmation(ctx, "pdeck_regression", "regression", params.project ?? ctx.cwd,
+        "regression 将串行执行 doctor/check/verify/simulate/visual 并把证据与报告写入项目 .pdeck/。");
+      if (gate.denied) return { content: [{ type: "text" as const, text: `拒绝执行: ${gate.denied}` }], details: { verdict: "CANCELLED" } };
+      const output = await runCli("regression", params, params.timeout ?? 600);
+      return toolResult(output, gate.auth);
+    },
+  });
+
   pi.registerCommand("pdeck-doctor", {
     description: "Run pdeck doctor on the current Phaser project",
     handler: async (_args, ctx) => {

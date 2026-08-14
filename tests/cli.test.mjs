@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { envelope, renderEnvelope, boundedText, failureEnvelope } from '../cli/result-envelope.mjs';
@@ -372,5 +372,42 @@ test('simulate: 解析失败附原始输出尾部（外部反馈 #4）', () => {
       return true;
     },
   );
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ===== R1：observe 复合动作 =====
+test('run observe: 临时起服务→观察→自动清理', { skip: !hasFixture, timeout: 300000 }, () => {
+  const port = String(56000 + Math.floor(Math.random() * 1000));
+  const out = pdeck(['run', 'observe', '--port', port, '--seconds', '3', FIXTURE], FIXTURE, 300000);
+  assert.match(out, /verdict: PASSED/);
+  assert.match(out, /lifecycle/);
+  // 端口应已释放（LISTENING 状态消失；TIME_WAIT 属正常残留）
+  const netstat = execSync('netstat -ano -p TCP', { encoding: 'utf8' });
+  const stillListening = netstat.split('\n').some((l) => l.includes(':' + port) && l.includes('LISTENING'));
+  assert.equal(stillListening, false, `端口 ${port} 不应再有 LISTENING 进程`);
+});
+
+// ===== R2：file:// CORS 针对性提示 =====
+test('run console: file:// 目标给出 CORS 直达提示', { skip: !hasFixture, timeout: 120000 }, () => {
+  const fileUrl = 'file:///' + join(FIXTURE, 'dist', 'index.html').replace(/\\/g, '/');
+  assert.throws(
+    () => pdeck(['run', 'console', fileUrl, '--seconds', '3'], FIXTURE, 120000),
+    (err) => {
+      assert.equal(err.status, 1);
+      assert.match(err.stdout, /CORS/);
+      return true;
+    },
+  );
+});
+
+// ===== R3：regression 组合命令 =====
+test('regression: 缺失前置的阶段如实 INCONCLUSIVE，聚合裁决诚实', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-regr-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { phaser: '4.2.1' } }));
+  const out = pdeck(['regression', dir], dir, 300000);
+  assert.match(out, /verdict: (PASSED|FAILED|INCONCLUSIVE)/);
+  assert.match(out, /regression\.(doctor|check|verify)/);
+  assert.match(out, /跳过：缺少模拟契约或剖面/);
+  assert.match(out, /跳过：无视觉基线/);
   rmSync(dir, { recursive: true, force: true });
 });

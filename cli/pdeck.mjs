@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { CLI_COMMANDS, CLI_OPTIONS } from '../registry/commands.mjs';
 import { failureEnvelope, renderEnvelope } from './result-envelope.mjs';
 
-const VERSION = '0.3.1';
+const VERSION = '0.3.2';
 
 function parseArgv(argv) {
   const tokens = [...argv];
@@ -130,6 +130,10 @@ const COMMANDS = {
     const { simulateProfile } = await import('./commands/simulate.mjs');
     return simulateProfile(args, options);
   },
+  async regression(args, options) {
+    const { regression } = await import('./commands/regression.mjs');
+    return regression(args, options);
+  },
 };
 
 async function main() {
@@ -148,7 +152,7 @@ async function main() {
   const options = parseProject(parsed);
   // run 嵌套动作：第一个位置参数为 action
   if (command === 'run' && positionals.length && !options.action) {
-    const known = ['serve', 'snapshot', 'console', 'probe', 'watch'];
+    const known = ['serve', 'snapshot', 'console', 'probe', 'watch', 'observe'];
     const first = positionals[0];
     if (known.includes(first)) {
       options.action = positionals.shift();
