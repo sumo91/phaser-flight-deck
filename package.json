@@ -29,6 +29,14 @@
   "engines": {
     "node": ">=20"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sumo91/phaser-flight-deck.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sumo91/phaser-flight-deck/issues"
+  },
+  "homepage": "https://github.com/sumo91/phaser-flight-deck#readme",
   "license": "MIT",
   "dependencies": {
     "playwright-core": "^1.62.1"
