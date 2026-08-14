@@ -24,7 +24,7 @@
     "pdeck": "./cli/pdeck.mjs"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test tests/cli.test.mjs"
   },
   "engines": {
     "node": ">=20"

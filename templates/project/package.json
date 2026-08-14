@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4173",
-    "test": "node --test"
+    "test": "tsx --test"
   },
   "dependencies": {
     "phaser": "4.2.1"
