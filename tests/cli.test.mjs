@@ -432,8 +432,9 @@ test('api: query 文本不被吞成 project（合成 phaser 安装，无 project
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('run watch: --json 时 stdout 为纯 JSON（进度走 stderr）', { timeout: 120000 }, async () => {
+test('run watch: --json 时 stdout 为纯 JSON（进度走 stderr，真实观察循环）', { timeout: 120000 }, async () => {
   const { createServer } = await import('node:http');
+  const { spawn } = await import('node:child_process');
   const server = createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end('<!doctype html><html><body>watch json test</body></html>');
@@ -441,18 +442,69 @@ test('run watch: --json 时 stdout 为纯 JSON（进度走 stderr）', { timeout
   await new Promise((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
   const url = `http://127.0.0.1:${server.address().port}/`;
   try {
-    let out;
-    try {
-      out = pdeck(['run', 'watch', url, '--seconds', '2', '--json']);
-    } catch (err) {
-      out = err.stdout; // FAILED 裁决退出码 1，信封仍在 stdout
-    }
-    const env = JSON.parse(out); // 任何进度行混入 stdout 都会在这里抛错
+    // 异步 spawn：父进程事件循环保持存活，测试服务器才能应答浏览器（execFileSync 会冻结它导致 goto 超时）
+    const { stdout, stderr } = await new Promise((resolveRun) => {
+      const child = spawn(process.execPath, [CLI, 'run', 'watch', url, '--seconds', '2', '--json']);
+      let out = '';
+      let err = '';
+      child.stdout.on('data', (c) => { out += c; });
+      child.stderr.on('data', (c) => { err += c; });
+      child.on('close', () => resolveRun({ stdout: out, stderr: err }));
+      setTimeout(() => { child.kill(); resolveRun({ stdout: out, stderr: err }); }, 90000).unref?.();
+    });
+    const env = JSON.parse(stdout); // 任何进度行混入 stdout 都会在这里抛错
     assert.ok(['PASSED', 'FAILED', 'INCONCLUSIVE'].includes(env.verdict));
-    // 浏览器可用时 kind=run.watch；不可用时为执行类信封——两种都证明 stdout 是纯 JSON
+    // 浏览器可用时必须走到真实观察循环——进度行只允许出现在 stderr
+    if (env.verdict === 'PASSED') {
+      assert.ok(stderr.includes('[watch'), '真实观察循环的进度行应在 stderr');
+    }
   } finally {
     server.close();
   }
+});
+
+test('simulate: 未显式 --hours 时取剖面记录时长（避免假失败）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-simh-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { phaser: '4.2.1' } }));
+  mkdirSync(join(dir, 'test'));
+  writeFileSync(join(dir, 'test', 'simulate.mjs'), `const h = Number(process.env.SIM_HOURS || 48);
+console.log(JSON.stringify({ hours: h, level: 100 + h }));`);
+  // 剖面以 10h 生成；不带 --hours 的 simulate 必须取剖面时长 10（修复前按默认 48 跑出假 FAILED）
+  const prof = pdeck(['simulate-profile', '--hours', '10', dir], dir, 120000);
+  assert.match(prof, /verdict: PASSED/);
+  const out = pdeck(['simulate', dir], dir, 120000);
+  assert.match(out, /verdict: PASSED/);
+  assert.match(out, /取剖面记录值 10h/);
+  // 显式 --hours 仍然优先于剖面
+  assert.throws(
+    () => pdeck(['simulate', '--hours', '90', dir], dir, 120000),
+    (err) => {
+      assert.match(err.stdout, /verdict: FAILED/);
+      assert.match(err.stdout, /band_violation/);
+      return true;
+    },
+  );
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('serve --stop: 非 Phaser 目录给出定位指引而非误导错误', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-stop1-'));
+  const out = pdeck(['run', 'serve', '--stop', '--port', '51999', '--project', dir]);
+  assert.match(out, /INCONCLUSIVE/);
+  assert.match(out, /--stop 需要定位记录服务的项目目录/);
+  assert.ok(!out.includes('不是可识别的 Phaser 项目'), '停止操作不应报项目识别错误');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('serve --stop: 有 server.json 的非 Phaser 目录可停止（归属锚点是状态文件）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-stop2-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'not-a-phaser-project' }));
+  mkdirSync(join(dir, '.pdeck'));
+  // 死 pid + 无监听端口：停止应安全完成且不误杀
+  writeFileSync(join(dir, '.pdeck', 'server.json'), JSON.stringify({ pid: 999999999, port: 59998, url: 'http://localhost:59998/' }));
+  const out = pdeck(['run', 'serve', '--stop'], dir);
+  assert.match(out, /verdict: PASSED/);
+  rmSync(dir, { recursive: true, force: true });
 });
 
 test('doctor: 仅声明未安装时禁止报 version_current（证据与谎言分离）', () => {

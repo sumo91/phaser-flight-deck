@@ -3,7 +3,7 @@
 // 浏览器动作消费 probes/flight-deck-probe.js 契约（window.__pdeck）。
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { detectProject } from '../lib/phaser-project.mjs';
@@ -82,9 +82,20 @@ async function ownsPortProcess(pid, root) {
 
 export async function runServe(args, options) {
   const { project, port, stop } = options;
-  const proj = detectProject(project ?? process.cwd());
-  if (!proj.found) return inconclusiveEnvelope('run.serve', `不是可识别的 Phaser 项目: ${proj.reason}`);
-  const root = proj.root;
+  // --stop 只需定位 .pdeck/server.json 所在目录（服务归属锚点），Phaser 项目性不是必要条件
+  const requestedDir = project ?? process.cwd();
+  const proj = detectProject(requestedDir);
+  let root = null;
+  if (proj.found) root = proj.root;
+  else if (stop && existsSync(serverStatePath(resolve(requestedDir)))) root = resolve(requestedDir);
+  if (!root) {
+    if (stop) {
+      return inconclusiveEnvelope('run.serve', '--stop 需要定位记录服务的项目目录（读 .pdeck/server.json 确认归属，防止误杀其它项目服务）', [
+        '在曾执行 pdeck run serve 的项目目录下重试，或用位置参数/--project 传项目路径',
+      ]);
+    }
+    return inconclusiveEnvelope('run.serve', `不是可识别的 Phaser 项目: ${proj.reason}`);
+  }
   const statePath = serverStatePath(root);
 
   if (stop) {
@@ -166,9 +177,11 @@ export async function runServe(args, options) {
     });
     command = 'node vite';
   } else if (proj.scripts?.dev) {
-    child = spawn(npmCmd(), ['run', 'dev', '--', '--port', String(usePort), '--strictPort'], {
-      cwd: root, shell: process.platform === 'win32', windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'], detached: true,
-    });
+    // Windows npm.cmd 批处理需要 shell；单命令串形式避免 Node ≥24 的 DEP0190 弃用警告
+    const devArgs = ['run', 'dev', '--', '--port', String(usePort), '--strictPort'];
+    child = process.platform === 'win32'
+      ? spawn(`${npmCmd()} ${devArgs.join(' ')}`, { cwd: root, shell: true, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'], detached: true })
+      : spawn(npmCmd(), devArgs, { cwd: root, shell: false, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'], detached: true });
     command = 'npm run dev';
   } else {
     return inconclusiveEnvelope('run.serve', '未发现 vite 且未定义 dev 脚本——无法启动开发服务器', [

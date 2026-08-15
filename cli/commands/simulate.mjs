@@ -101,7 +101,7 @@ async function runHarness(root, harness, hours, timeout) {
 }
 
 export async function simulate(args, options) {
-  const { project, hours = 48, timeout = 600 } = options;
+  const { project, timeout = 600 } = options;
   const proj = detectProject(project ?? process.cwd());
   if (!proj.found) return inconclusiveEnvelope('simulate', `不是可识别的 Phaser 项目: ${proj.reason}`);
   const root = proj.root;
@@ -121,6 +121,8 @@ export async function simulate(args, options) {
   } catch {
     return inconclusiveEnvelope('simulate', '剖面文件损坏，请重新 pdeck simulate-profile');
   }
+  // 时长优先级：显式 --hours > 剖面记录值 > 48——默认时长与剖面不一致会产生假失败（同 regression R3 规则）
+  const hours = Number(options.hours ?? (Number.isFinite(Number(profile.hours)) ? profile.hours : 48));
 
   const { result, fallback, error } = await runHarness(root, harness, hours, timeout);
   if (error) return inconclusiveEnvelope('simulate', error, CONTRACT_HINT);
@@ -158,6 +160,9 @@ export async function simulate(args, options) {
     kind: 'simulate',
     decisiveStage: 'simulate',
     facts: [
+      ...(options.hours === undefined
+        ? [fact('duration_source', 'simulate', `时长未显式指定，取剖面记录值 ${hours}h（--hours 可覆盖）`)]
+        : []),
       fact('simulation_report', 'simulate', `模拟 ${report.hours}h 完成${fallback ? `（${fallback}）` : ''}`, {
         actual: reportFields,
       }),

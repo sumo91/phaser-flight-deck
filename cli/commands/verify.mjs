@@ -20,12 +20,15 @@ function runProcess(command, args, options = {}) {
     const timeoutMs = (options.timeoutSeconds ?? 120) * 1000;
     // 仅 npm 批处理类命令需要 shell；node 直调绝对路径必须 shell:false（避免路径空格被 cmd 拆断）
     const useShell = Boolean(options.useShell ?? (process.platform === 'win32' && /npm(\.cmd)?$/i.test(command)));
-    const child = spawn(command, args, {
+    const spawnOptions = {
       cwd: options.cwd,
-      shell: useShell,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    };
+    // Node ≥24 对 shell:true + args 数组组合告 DEP0190：需要 shell 时合并为单命令串（内控常量，无注入面）
+    const child = useShell
+      ? spawn([command, ...args].join(' '), { ...spawnOptions, shell: true })
+      : spawn(command, args, { ...spawnOptions, shell: false });
     let stdout = '';
     let stderr = '';
     let settled = false;

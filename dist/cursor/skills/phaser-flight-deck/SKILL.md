@@ -40,7 +40,7 @@ node <phaser-flight-deck目录>/cli/pdeck.mjs <command> [args] --json   # 兑底
 - **确认门**：Cursor 无 hooks——写入类命令（init --apply / vendor-skills / baseline / simulate-profile）
   执行前必须先向用户说明并获同意（prompt 约定）
 
-_本文件由 scripts/generate-adapters.mjs 自动生成（v0.4.1），勿手改；源文件 skills/phaser4-flight-deck/SKILL.md。_
+_本文件由 scripts/generate-adapters.mjs 自动生成（v0.4.2），勿手改；源文件 skills/phaser4-flight-deck/SKILL.md。_
 
 # Phaser 4 Flight Deck 主技能
 
