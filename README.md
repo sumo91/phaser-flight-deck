@@ -1,6 +1,6 @@
 # Phaser Flight Deck
 
-> **v0.4.3** · 55 tests · MIT License · Node ≥ 20
+> **v0.5.0** · 59 tests · MIT License · Node ≥ 20
 
 Agent toolchain for **Phaser 4 web games**: project health checks, v4 API static scanning,
 an API-truth oracle over the bundled type definitions, a narrow-to-broad verification ladder,
@@ -75,6 +75,7 @@ pdeck run serve <项目>                           # dev server 生命周期（�
 pdeck run observe <项目>                         # 复合观察：按需起服务→console→自动清理
 pdeck run snapshot http://localhost:5173/
 pdeck run console http://localhost:5173/ --seconds 5
+pdeck run playtest <剧本.json> <项目>               # 机器人玩家玩测（按键/点击/断言/截图剧本）
 pdeck baseline demo <项目>                       # 视觉回归基线
 pdeck visual-test demo <项目>                    # 与基线像素比对
 pdeck simulate <项目>                            # 平衡模拟门（需 test/simulate 契约 + 剖面）
@@ -94,7 +95,7 @@ pdeck help
 | `pdeck check` | 19 条 v4 API 规则扫描 + 纹理 key 校验（动态工厂误报抑制） | 只读 |
 | `pdeck api` | d.ts 预言机：query / exists（含已移除 API 交叉核对）/ version / describe | 只读 |
 | `pdeck verify` | 验证阶梯：版本→tsc→构建→真实浏览器→截图证据（.pdeck/） | generated-write |
-| `pdeck run` | serve（端口预检+双栈实测）/ snapshot / console（良性404过滤+环境噪音归类）/ probe / watch / **observe（自动起停复合观察）** | generated-write |
+| `pdeck run` | serve（端口预检+双栈实测）/ snapshot / console（良性404过滤+环境噪音归类）/ probe / watch / **observe（自动起停复合观察）** / **playtest（剧本驱动机器人玩家：press/hold/click/expect/collect/capture，设计逻辑注入与断言）** | generated-write |
 | `pdeck baseline` / `visual-test` | 视觉回归：基线截图 + 浏览器解码逐像素比对（阈值/容差可调） | generated-write |
 | `pdeck simulate` / `simulate-profile` | 平衡模拟门：项目 test/simulate 契约 + 剖面区间回归检查 | 只读 / 生成写 |
 | `pdeck regression` | **全量回归组合**：doctor→check→verify→simulate→visual 串行 → 一份有界信封 + json/md 报告 | generated-write |
@@ -149,9 +150,9 @@ pdeck help
 ## 测试
 
 ```bash
-npm test                                          # 55 项 = 50 CLI 回归 + 5 适配器一致性
-PDECK_TEST_FIXTURE=<Phaser项目路径> npm test      # 附带真实项目集成（verify 阶梯、serve 生命周期、视觉自比对、模拟门）
-# 未设置夹具时集成测试自动跳过（45 通过 / 10 跳过）
+npm test                                          # 59 项 = 54 CLI 回归 + 5 适配器一致性
+PDECK_TEST_FIXTURE=<Phaser项目路径> npm test      # 附带真实项目集成（verify 阶梯、serve 生命周期、视觉自比对、模拟门、玩测）
+# 未设置夹具时集成测试自动跳过（48 通过 / 11 跳过）
 ```
 
 ## 目录
@@ -166,7 +167,7 @@ extensions/              Pi 薄封装扩展（参数映射+确认门+Envelope �
 skills/                  自研主技能 + 官方技能 vendor
 probes/                  运行时探针契约（window.__pdeck，pdeck run probe 消费）
 templates/project/       init 脚手架模板（Phaser 4.2.1 钉版）
-tests/                   node --test 回归（55 项：cli.test + adapters.test）
+tests/                   node --test 回归（59 项：cli.test + adapters.test）
 scripts/                 generate-adapters.mjs（多宿主适配器生成器，零依赖）
 dist/                    生成的宿主适配器包（已提交，安装方式见 dist/README.md）
 .github/workflows/       CI：push/PR 自动跑 npm test

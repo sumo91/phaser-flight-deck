@@ -42,7 +42,7 @@ node <phaser-flight-deck目录>/cli/pdeck.mjs <command> [args] --json   # 兑底
   首次使用前把 settings.json 示例合入 `~/.claude/settings.json`；
   未装 hooks 时，写入类命令执行前必须先向用户说明并获同意
 
-_本文件由 scripts/generate-adapters.mjs 自动生成（v0.4.3），勿手改；源文件 skills/phaser4-flight-deck/SKILL.md。_
+_本文件由 scripts/generate-adapters.mjs 自动生成（v0.5.0），勿手改；源文件 skills/phaser4-flight-deck/SKILL.md。_
 
 # Phaser 4 Flight Deck 主技能
 

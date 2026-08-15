@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { CLI_COMMANDS, CLI_OPTIONS } from '../registry/commands.mjs';
 import { failureEnvelope, renderEnvelope } from './result-envelope.mjs';
 
-const VERSION = '0.4.3';
+const VERSION = '0.5.0';
 
 function parseArgv(argv) {
   const tokens = [...argv];
@@ -152,7 +152,7 @@ async function main() {
   const options = parseProject(parsed);
   // run 嵌套动作：第一个位置参数为 action
   if (command === 'run' && positionals.length && !options.action) {
-    const known = ['serve', 'snapshot', 'console', 'probe', 'watch', 'observe'];
+    const known = ['serve', 'snapshot', 'console', 'probe', 'watch', 'observe', 'playtest'];
     const first = positionals[0];
     if (known.includes(first)) {
       options.action = positionals.shift();

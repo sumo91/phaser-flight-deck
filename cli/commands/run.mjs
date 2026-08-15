@@ -224,38 +224,71 @@ function urlHint(errors) {
   return [];
 }
 
+// 自动服务生命周期（observe / playtest 共用）：有 --url 直接用；有可用状态则复用；
+// 否则自己起服务并返回 stopNeeded（调用方 finally 负责清理，只清理自己起的）。
+// 未显式指定端口时若默认口被外部进程占用（多项目并发开发的常态），自动尝试后续候选——
+// 这类动作自己起停自己的服务、URL 由自己消费，不存在 serve 的 URL 归属歧义。
+async function autoServerLifecycle(project, port) {
+  const proj = detectProject(project ?? process.cwd());
+  if (!proj.found) {
+    return { error: `不是可识别的 Phaser 项目: ${proj.reason}`, hint: ['传项目路径（或 --url 指向运行中的页面）'] };
+  }
+  const statePath = serverStatePath(proj.root);
+  if (existsSync(statePath)) {
+    try {
+      const st = JSON.parse(readFileSync(statePath, 'utf8'));
+      if ((!port || st.port === port) && pidAlive(st.pid)) {
+        return { url: st.url, stopNeeded: false, note: `复用已在运行的 dev server（pid ${st.pid}）`, root: proj.root };
+      }
+    } catch { /* 状态文件损坏，走启动 */ }
+  }
+  const candidates = port ? [String(port)] : ['5173', '5174', '5175', '5176', '5177', '5178'];
+  for (const candidate of candidates) {
+    const served = await runServe([], { project: proj.root, port: candidate });
+    if (served.verdict === 'PASSED') {
+      const startedFact = served.facts?.find((f) => f.classification === 'server_started');
+      return {
+        url: startedFact?.actual?.url ?? `http://localhost:${candidate}/`,
+        stopNeeded: true,
+        note: `本次由 pdeck 临时起服务（端口 ${candidate}），结束后自动清理`,
+        root: proj.root,
+      };
+    }
+    const occupied = String(served.summary ?? '').includes('占用');
+    if (!occupied || port) {
+      // 显式指定的端口被占或非占用类失败：如实失败，不静默换口
+      return { error: `自动起服务失败: ${served.summary}`, envelope: served };
+    }
+  }
+  return { error: '默认端口 5173-5178 均被外部进程占用', hint: ['用 --port 指定空闲端口，或 --url 直连运行中的页面'] };
+}
+
+async function stopAutoServer(root, port) {
+  if (!root) return;
+  await runServe([], { project: root, port, stop: true }).catch(() => {});
+}
+
 // R1：observe 复合动作——按需起服务 → 观察 → 自己起的必清理（复用已有服务器时不碰）
 export async function runObserve(args, options) {
   const { project, url, seconds = 5, port } = options;
   let targetUrl = url ?? null;
-  let stopNeeded = false;
-  let lifecycleFact = null;
+  let stopRoot = null;
+  let lifecycleNote = null;
   if (!targetUrl) {
-    const proj = detectProject(project ?? process.cwd());
-    if (!proj.found) return inconclusiveEnvelope('run.observe', `不是可识别的 Phaser 项目: ${proj.reason}`, ['pdeck run observe <url> 直接观察运行中的页面，或传项目路径']);
-    const statePath = serverStatePath(proj.root);
-    let running = false;
-    if (existsSync(statePath)) {
-      try {
-        const st = JSON.parse(readFileSync(statePath, 'utf8'));
-        if ((!port || st.port === port) && pidAlive(st.pid)) { running = true; targetUrl = st.url; lifecycleFact = `复用已在运行的 dev server（pid ${st.pid}）`; }
-      } catch { /* 状态文件损坏，走启动 */ }
+    const auto = await autoServerLifecycle(project, port);
+    if (auto.error) {
+      return auto.envelope ?? inconclusiveEnvelope('run.observe', auto.error, auto.hint ?? ['pdeck run observe <url> 直接观察运行中的页面，或传项目路径']);
     }
-    if (!running) {
-      const served = await runServe([], { project: proj.root, port });
-      if (served.verdict !== 'PASSED') return served;
-      const startedFact = served.facts?.find((f) => f.classification === 'server_started');
-      targetUrl = startedFact?.actual?.url ?? `http://localhost:${port ?? 5173}/`;
-      stopNeeded = true;
-      lifecycleFact = '本次观察由 observe 临时起服务，结束后自动清理';
-    }
+    targetUrl = auto.url;
+    lifecycleNote = auto.note;
+    if (auto.stopNeeded) stopRoot = auto.root;
   }
   try {
     const observation = await runConsole([], { url: targetUrl, seconds });
     observation.kind = 'run.observe';
-    if (lifecycleFact) {
-      observation.facts.push(fact('lifecycle', 'run.observe', lifecycleFact));
-      observation.summary += `；${lifecycleFact}`;
+    if (lifecycleNote) {
+      observation.facts.push(fact('lifecycle', 'run.observe', lifecycleNote));
+      observation.summary += `；${lifecycleNote}`;
     }
     if (observation.verdict === 'FAILED') {
       const realErrors = (observation.facts ?? []).filter((f) => f.classification === 'console_errors' || f.classification === 'page_errors')
@@ -264,12 +297,7 @@ export async function runObserve(args, options) {
     }
     return observation;
   } finally {
-    if (stopNeeded) {
-      const proj = detectProject(project ?? process.cwd());
-      if (proj.found) {
-        await runServe([], { project: proj.root, port, stop: true }).catch(() => {});
-      }
-    }
+    if (stopRoot) await stopAutoServer(stopRoot, port);
   }
 }
 
@@ -441,14 +469,203 @@ export async function runWatch(args, options) {
   }
 }
 
+// ===== playtest：机器人玩家玩测（剧本驱动真实 UI + 设计逻辑注入）=====
+// 剧本契约：JSON { name, steps: [{do, ...}] }，7 种动作——
+//   press(key) / hold(key,ms) / wait(ms) / click(x,y)          输入与等待
+//   expect(that,eval) / collect(that,eval)                     eval 在页面内求值（可调 window.__session 等注入点）
+//   capture(as)                                                 截图证据
+// 求值/执行抛错或 expect 为假 → FAILED（decisive 为该步）；页面未捕获异常 → FAILED。
+const PLAYTEST_MAX_STEPS = 64;
+const PLAYTEST_KINDS = ['press', 'hold', 'wait', 'click', 'expect', 'collect', 'capture'];
+const PLAYTEST_HINT = [
+  '剧本：{"name":"冒烟","steps":[{"do":"press","key":"Enter"},{"do":"expect","that":"已开局","eval":"()=> !!window.__game"}]}',
+  '动作：press(key) hold(key,ms) wait(ms) click(x,y) expect/collect(that,eval 页面内求值) capture(as)',
+  '前后对比可借页面全局暂存：eval 里先 "()=>(window.__pt=…)&&true" 再断言比较',
+];
+
+function loadPlaytestScript(scriptPath) {
+  if (!scriptPath) return { error: '缺少剧本路径（pdeck run playtest <script.json> [project]）' };
+  if (!existsSync(scriptPath)) return { error: `剧本文件不存在: ${scriptPath}` };
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(scriptPath, 'utf8'));
+  } catch (error) {
+    return { error: `剧本不是合法 JSON: ${error.message}` };
+  }
+  const steps = Array.isArray(parsed?.steps) ? parsed.steps : null;
+  if (!steps || !steps.length) return { error: '剧本缺少非空 steps 数组' };
+  if (steps.length > PLAYTEST_MAX_STEPS) return { error: `剧本步骤 ${steps.length} 超上限 ${PLAYTEST_MAX_STEPS}` };
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    const label = `第 ${i + 1} 步`;
+    if (!step || !PLAYTEST_KINDS.includes(step.do)) {
+      return { error: `${label}动作非法: ${JSON.stringify(step?.do)}（可用：${PLAYTEST_KINDS.join(' | ')}）` };
+    }
+    if ((step.do === 'press' || step.do === 'hold') && typeof step.key !== 'string') return { error: `${label} ${step.do} 需要 key` };
+    if (['hold', 'wait'].includes(step.do) && (!Number.isFinite(step.ms) || step.ms < 0 || step.ms > 10000)) return { error: `${label} ${step.do} 的 ms 需为 0..10000` };
+    if (step.do === 'click' && (!Number.isFinite(step.x) || !Number.isFinite(step.y))) return { error: `${label} click 需要 x/y 数值` };
+    if ((step.do === 'expect' || step.do === 'collect') && typeof step.eval !== 'string') return { error: `${label} ${step.do} 需要 eval（页面内求值表达式）` };
+    if (step.do === 'capture' && typeof step.as !== 'string') return { error: `${label} capture 需要 as（截图名）` };
+  }
+  return { script: { name: typeof parsed.name === 'string' ? parsed.name.slice(0, 40) : 'playtest', steps } };
+}
+
+// 页面内求值：剧本 eval 支持两种写法——'() => …' 函数串（Node 侧构函后由页面调用）
+// 或 '…' 纯表达式（playwright 直接按表达式求值）。字符串直传函数体会被当表达式、
+// 返回函数对象本身（不可序列化 → undefined），必须区分处理。
+async function evalInPage(page, expr) {
+  const isFunction = /^\s*(?:async\s+)?function\b/.test(expr)
+    || /^\s*(?:async\s+)?(?:\((?:[^()]*)\)|[A-Za-z_$][\w$]*)\s*=>/.test(expr);
+  if (isFunction) {
+    const fn = (0, eval)(`(${expr})`);
+    return page.evaluate(fn);
+  }
+  return page.evaluate(expr);
+}
+
+export async function runPlaytest(args, options) {
+  const { project, url, script, viewport } = options;
+  const loaded = loadPlaytestScript(script ?? args[0]);
+  if (loaded.error) return inconclusiveEnvelope('run.playtest', loaded.error, PLAYTEST_HINT);
+  const { name, steps } = loaded.script;
+
+  // 目标页面：--url 优先；否则与 observe 相同的自动起停（复用不碰，自起必清理）
+  let targetUrl = url ?? null;
+  let stopRoot = null;
+  let lifecycleNote = null;
+  if (!targetUrl) {
+    const auto = await autoServerLifecycle(project, options.port);
+    if (auto.error) {
+      return auto.envelope ?? inconclusiveEnvelope('run.playtest', auto.error, auto.hint ?? PLAYTEST_HINT);
+    }
+    targetUrl = auto.url;
+    lifecycleNote = auto.note;
+    if (auto.stopNeeded) stopRoot = auto.root;
+  }
+
+  const target = await requireBrowserTarget(targetUrl);
+  if (target.error) {
+    if (stopRoot) await stopAutoServer(stopRoot, options.port);
+    return inconclusiveEnvelope('run.playtest', target.error, ['安装系统 Chrome/Edge，或 cd 工具目录 npm install（playwright-core）']);
+  }
+
+  const facts = [];
+  const artifacts = [];
+  const inputLog = [];
+  let failed = null;
+  try {
+    const size = String(viewport ?? '1280x800').split('x').map(Number);
+    const view = { width: Number.isFinite(size[0]) ? size[0] : 1280, height: Number.isFinite(size[1]) ? size[1] : 800 };
+    const { page, consoleErrors, pageErrors } = await openPage(target.launched.browser, targetUrl, view);
+    const proj = detectProject(project ?? process.cwd());
+    const capturesDir = join(proj.found ? proj.root : process.cwd(), '.pdeck', 'captures');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const kindCount = {};
+    for (const s of steps) kindCount[s.do] = (kindCount[s.do] ?? 0) + 1;
+    facts.push(fact('script', 'run.playtest', `剧本 "${name}" 共 ${steps.length} 步（${Object.entries(kindCount).map(([k, n]) => `${k}×${n}`).join(' ')}）`));
+    if (lifecycleNote) facts.push(fact('lifecycle', 'run.playtest', lifecycleNote));
+
+    for (let i = 0; i < steps.length && !failed; i++) {
+      const step = steps[i];
+      try {
+        switch (step.do) {
+          case 'press':
+            await page.keyboard.press(step.key);
+            inputLog.push(`press ${step.key}`);
+            break;
+          case 'hold':
+            await page.keyboard.down(step.key);
+            await sleep(Math.min(step.ms, 10000));
+            await page.keyboard.up(step.key);
+            inputLog.push(`hold ${step.key} ${step.ms}ms`);
+            break;
+          case 'wait':
+            await sleep(Math.min(step.ms, 10000));
+            inputLog.push(`wait ${step.ms}ms`);
+            break;
+          case 'click':
+            await page.mouse.click(step.x, step.y);
+            inputLog.push(`click ${step.x},${step.y}`);
+            break;
+          case 'expect': {
+            const value = await evalInPage(page, step.eval);
+            if (!value) {
+              failed = `第 ${i + 1} 步 expect 未满足: ${step.that ?? step.eval.slice(0, 60)}`;
+              facts.push(fact('expect_failed', 'run.playtest', `${i + 1}. ${step.that ?? 'eval 为假'}`, {
+                actual: { value: value === undefined ? null : value, eval: step.eval.slice(0, 120) },
+              }));
+            } else {
+              facts.push(fact('expect_ok', 'run.playtest', `${i + 1}. ${step.that ?? '满足'}`));
+            }
+            break;
+          }
+          case 'collect': {
+            const value = await evalInPage(page, step.eval);
+            facts.push(fact('collected', 'run.playtest', `${i + 1}. ${step.that ?? step.eval.slice(0, 60)}`, { actual: value }));
+            break;
+          }
+          case 'capture': {
+            mkdirSync(capturesDir, { recursive: true });
+            const shot = join(capturesDir, `playtest-${step.as}-${stamp}.png`);
+            await page.screenshot({ path: shot });
+            artifacts.push(shot);
+            facts.push(fact('captured', 'run.playtest', `${i + 1}. ${step.as}`, { actual: { path: shot } }));
+            break;
+          }
+        }
+      } catch (error) {
+        failed = `第 ${i + 1} 步 ${step.do} 执行失败: ${error.message}`;
+        facts.push(fact('step_error', 'run.playtest', failed, { actual: { step: i + 1, do: step.do } }));
+      }
+    }
+    if (inputLog.length) {
+      facts.push(fact('inputs', 'run.playtest', `输入序列: ${inputLog.slice(0, 8).join(' → ')}${inputLog.length > 8 ? ' …' : ''}`));
+    }
+    const errors = splitErrors(consoleErrors);
+    if (pageErrors.length) {
+      failed = failed ?? `页面未捕获异常 ${pageErrors.length} 条`;
+      facts.push(fact('page_errors', 'run.playtest', `页面未捕获异常 ${pageErrors.length} 条`, { actual: collectBounded(pageErrors) }));
+    }
+    if (errors.real.length) {
+      failed = failed ?? `实质性控制台错误 ${errors.real.length} 条`;
+      facts.push(fact('console_errors', 'run.playtest', `实质性控制台错误 ${errors.real.length} 条`, { actual: collectBounded(errors.real) }));
+    }
+    if (!failed && !pageErrors.length && !errors.real.length) {
+      facts.push(fact('clean', 'run.playtest', `${steps.length} 步全部执行完毕，无页面异常与实质错误`));
+    }
+    return envelope(failed ? 'FAILED' : 'PASSED', failed
+      ? `玩测失败：${failed}`
+      : `玩测通过：剧本 "${name}" ${steps.length} 步全部完成${lifecycleNote ? `（${lifecycleNote}）` : ''}`, {
+      kind: 'run.playtest',
+      decisiveStage: failed ? 'run.playtest' : undefined,
+      facts,
+      artifacts,
+      nextSteps: failed
+        ? ['根据 expect_failed/step_error 的步骤号定位剧本与页面行为差异；pdeck run console <url> 观察控制台']
+        : ['把 expect 断言加入关键设计逻辑（如 window.__session 状态变化），逐步扩大剧本覆盖'],
+    });
+  } catch (error) {
+    return inconclusiveEnvelope('run.playtest', `玩测执行异常: ${error.message}`);
+  } finally {
+    await target.launched.browser.close().catch(() => {});
+    if (stopRoot) await stopAutoServer(stopRoot, options.port);
+  }
+}
+
 export async function run(args, options) {
   const action = options.action ?? args[0] ?? 'serve';
   const restArgs = args.slice(args[0] === action ? 1 : 0);
   const restOptions = { ...options };
-  // 第二个位置参数语义：serve/observe → project；其余动作 → url
+  // 第二个位置参数语义：serve/observe → project；playtest → 剧本路径（第三个为 project）；其余动作 → url
   if (restArgs.length) {
-    if ((action === 'serve' || action === 'observe') && !restOptions.project) restOptions.project = restArgs[0];
-    else if (action !== 'serve' && action !== 'observe' && !restOptions.url) restOptions.url = restArgs[0];
+    if (action === 'playtest') {
+      if (!restOptions.script) restOptions.script = restArgs[0];
+      if (restArgs[1] && !restOptions.project) restOptions.project = restArgs[1];
+    } else if ((action === 'serve' || action === 'observe') && !restOptions.project) {
+      restOptions.project = restArgs[0];
+    } else if (action !== 'serve' && action !== 'observe' && !restOptions.url) {
+      restOptions.url = restArgs[0];
+    }
   }
   switch (action) {
     case 'serve': return runServe(restArgs, restOptions);
@@ -457,7 +674,8 @@ export async function run(args, options) {
     case 'probe': return runProbe(restArgs, restOptions);
     case 'watch': return runWatch(restArgs, restOptions);
     case 'observe': return runObserve(restArgs, restOptions);
+    case 'playtest': return runPlaytest(restArgs, restOptions);
     default:
-      return inconclusiveEnvelope('run', `未知 run 动作: ${action}`, ['可用：serve | snapshot | console | probe | watch | observe']);
+      return inconclusiveEnvelope('run', `未知 run 动作: ${action}`, ['可用：serve | snapshot | console | probe | watch | observe | playtest']);
   }
 }

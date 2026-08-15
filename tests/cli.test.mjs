@@ -223,6 +223,80 @@ test('textureKeyFindings: 跨文件集中创建不误报（项目级聚合）', 
   rmSync(dir, { recursive: true, force: true });
 });
 
+// ===== v0.5.0：playtest 机器人玩家玩测 =====
+test('playtest: 剧本校验（缺文件/坏 JSON/未知动作/缺字段/超步数）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-ptv-'));
+  assert.match(pdeck(['run', 'playtest', join(dir, 'nope.json'), dir]), /剧本文件不存在/);
+  writeFileSync(join(dir, 'bad.json'), '{oops');
+  assert.match(pdeck(['run', 'playtest', join(dir, 'bad.json'), dir]), /不是合法 JSON/);
+  writeFileSync(join(dir, 'kind.json'), JSON.stringify({ steps: [{ do: 'teleport' }] }));
+  assert.match(pdeck(['run', 'playtest', join(dir, 'kind.json'), dir]), /第 1 步动作非法/);
+  writeFileSync(join(dir, 'field.json'), JSON.stringify({ steps: [{ do: 'expect', that: 'x' }] }));
+  assert.match(pdeck(['run', 'playtest', join(dir, 'field.json'), dir]), /第 1 步 expect 需要 eval/);
+  writeFileSync(join(dir, 'many.json'), JSON.stringify({ steps: Array.from({ length: 65 }, () => ({ do: 'wait', ms: 1 })) }));
+  assert.match(pdeck(['run', 'playtest', join(dir, 'many.json'), dir]), /超上限/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('playtest: 真实执行——按键驱动页面状态、断言、采集、截图', { timeout: 120000 }, async () => {
+  const { createServer } = await import('node:http');
+  const { spawn } = await import('node:child_process');
+  const server = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(`<!doctype html><html><body><canvas width="8" height="8"></canvas><script>
+      window.__state = { x: 0 };
+      addEventListener('keydown', (e) => { if (e.key === 'd') window.__state.x += 10; });
+    </script></body></html>`);
+  });
+  await new Promise((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-pt-')); // captures 落临时目录
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { phaser: '4.2.1' } }));
+  const scriptPath = join(dir, 'smoke.json');
+  writeFileSync(scriptPath, JSON.stringify({ name: 'smoke', steps: [
+    { do: 'press', key: 'd' },
+    { do: 'expect', that: '按下 d 后 x 增加', eval: '() => window.__state.x > 0' },
+    { do: 'collect', that: '页面状态', eval: '() => window.__state' },
+    { do: 'capture', as: 'smoke' },
+  ]}));
+  try {
+    const out = await new Promise((resolveRun) => {
+      // 异步 spawn：父进程事件循环存活，测试服务器才能应答浏览器
+      const child = spawn(process.execPath, [CLI, 'run', 'playtest', scriptPath, '--url', url, '--json'], { cwd: dir });
+      let stdout = '';
+      child.stdout.on('data', (c) => { stdout += c; });
+      child.on('close', () => resolveRun(stdout));
+      setTimeout(() => { child.kill(); resolveRun(stdout); }, 90000).unref?.();
+    });
+    const env = JSON.parse(out);
+    if (env.verdict === 'INCONCLUSIVE') {
+      // 无浏览器环境：降级信封结构仍须正确
+      assert.ok(env.facts.some((f) => f.classification === 'precondition_missing'));
+    } else {
+      assert.equal(env.verdict, 'PASSED');
+      assert.ok(env.facts.some((f) => f.classification === 'expect_ok'));
+      assert.ok(env.facts.some((f) => f.classification === 'collected' && JSON.stringify(f.actual).includes('"x":10')), 'collect 应捕获 x=10');
+      assert.ok((env.artifacts ?? []).some((a) => a.includes('playtest-smoke')), '截图证据应落盘');
+    }
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('集成: playtest 真实 Phaser 项目（项目无关冒烟剧本）', { skip: !hasFixture, timeout: 300000 }, () => {
+  const scriptPath = join(tmpdir(), 'pdeck-pt-fixture.json');
+  writeFileSync(scriptPath, JSON.stringify({ name: 'phaser-smoke', steps: [
+    { do: 'wait', ms: 2000 },
+    { do: 'expect', that: 'canvas 已渲染（纯 DOM 断言，不依赖项目暴露全局）', eval: "() => document.querySelectorAll('canvas').length > 0" },
+    { do: 'collect', that: 'canvas 尺寸', eval: "() => Array.from(document.querySelectorAll('canvas')).slice(0, 2).map((c) => c.width + 'x' + c.height)" },
+    { do: 'capture', as: 'playtest-smoke' },
+  ]}));
+  const out = pdeck(['run', 'playtest', scriptPath, FIXTURE], FIXTURE, 300000);
+  assert.match(out, /verdict: PASSED/);
+  assert.match(out, /expect_ok/);
+});
+
 // ===== 真实项目集成（夹具）=====
 test('集成: doctor 真实项目 PASSED', { skip: !hasFixture }, () => {
   const out = pdeck(['doctor', FIXTURE, '--offline']);
@@ -398,6 +472,28 @@ test('simulate: 解析失败附原始输出尾部（外部反馈 #4）', () => {
       return true;
     },
   );
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('simulate: 剖面字段漂移提醒（新增字段绕门 + 消失字段留 stale band）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-drift-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { phaser: '4.2.1' } }));
+  mkdirSync(join(dir, 'test'));
+  // 以 {level, crops} 生成剖面
+  writeFileSync(join(dir, 'test', 'simulate.mjs'), `const h = Number(process.env.SIM_HOURS || 48);
+console.log(JSON.stringify({ hours: h, level: 100 + h, crops: h * 10 }));`);
+  const prof = pdeck(['simulate-profile', '--hours', '5', dir], dir, 120000);
+  assert.match(prof, /verdict: PASSED/);
+  // harness 演进：删 crops、加 gold → gold 未入 band（绕门），crops 变 stale band
+  writeFileSync(join(dir, 'test', 'simulate.mjs'), `const h = Number(process.env.SIM_HOURS || 48);
+console.log(JSON.stringify({ hours: h, level: 100 + h, gold: h * 100 }));`);
+  const out = pdeck(['simulate', '--hours', '5', dir], dir, 120000);
+  assert.match(out, /verdict: PASSED/); // 漂移不改变裁决，但必须三处可见
+  assert.match(out, /unchecked_field/);
+  assert.match(out, /gold/);
+  assert.match(out, /stale_band/);
+  assert.match(out, /crops/);
+  assert.match(out, /重新 pdeck simulate-profile/);
   rmSync(dir, { recursive: true, force: true });
 });
 

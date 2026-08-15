@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.5.0 — playtest：机器人玩家玩测（2026-08-16）
+
+立项来源：真实项目实测发现工具链缺"玩家行为"维度——verify 只有单次输入可达性探测，
+simulate 走项目自己的 harness。用现有积木（浏览器驱动 + DEV 注入点）验证两条路可行后正式落地：
+
+- **`pdeck run playtest <script.json> [project|--url]`**：剧本驱动的机器人玩家玩测。
+  7 种动作：`press(key)` / `hold(key,ms)` / `wait(ms)` / `click(x,y)`（输入），
+  `expect(that,eval)` / `collect(that,eval)`（页面内求值——设计逻辑注入，可调
+  `window.__session` 等项目注入点；前后对比可借页面全局暂存），`capture(as)`（截图证据）。
+  expect 为假/求值抛错/页面未捕获异常 → FAILED（事实带步骤号）；服务生命周期与
+  observe 相同（复用不碰、自起必清理）。剧本校验（≤64 步、动作/字段合法性）在
+  起浏览器之前完成，错误信息带步骤号与 JSON 行列位置。
+- **eval 双形式**：`'() => …'` 函数串（Node 侧构函后页面调用）与 `'…'` 纯表达式
+  （直传求值）。字符串直传函数体会被 playwright 当表达式、返回函数对象本身
+  （不可序列化 → undefined）——实测踩坑后区分处理。
+- **#22 端口自动回退**：observe/playtest 未显式指定端口时，默认口被外部进程占用
+  （多项目并发开发常态，本机 ZCamp 长期占用 5173 两次触发）则自动尝试 5173-5178
+  候选——这类动作自己起停自己的服务、URL 自产自销，无 serve 的归属歧义。
+  显式 `--port` 仍严格拒绝。
+- **#8 补全**：registry `run.actions` 补上此前缺失的 `observe`（与新增 `playtest`）。
+- observe/playtest 共用 `autoServerLifecycle` 助手（observe 行为不变）。
+
+实测：StarValley 9 步剧本 7.7s——Enter 开局（day 1/money 500）→ hold D 移动
+（x 200→288）→ 断言通过 → 截图证据；开发中两次剧本错误（缺引号、非防御访问）
+均被诚实捕获（JSON 行列定位 / step_error 带步骤号）。
+
+新增 3 项测试（剧本校验、静态页真实执行、夹具玩测——项目无关纯 DOM 断言）。
+测试总数 59（54 CLI + 5 适配器）；双夹具 59/59 全绿。
+
+## 0.4.4 — 平衡门剖面字段漂移检测（2026-08-16）
+
+发现路径：对 SwordIdle 连跑两次同参模拟发现 gold 摆幅 2.9 倍且从未被检查——
+
+- **双向漂移检测**：simulate 现在核对 harness 报告字段与剖面 bands 的对称性——
+  报告有、剖面无（新增字段绕门）→ `unchecked_field`；剖面有、报告不再输出
+  （stale band 未核对）→ `stale_band`。不改变裁决（没有基线无法定性），但在
+  summary/facts/nextSteps 三处可见。
+- 实测两个真实项目都有漂移：SwordIdle 的 `gold`、StarValley 的
+  `money/daysSimulated/seedSpend`——剖面均为 harness 加字段之前生成的，
+  这些字段此前一直绕过平衡门。
+- 遗留（项目侧，#24）：SwordIdle 模拟 harness 未固定随机种子（同参两次
+  gold 10991↔3788、level 19↔20），高方差字段入 band 会 flaky；StarValley
+  全字段确定性（两次完全一致），可作参照。两个项目可择机重新
+  `simulate-profile` 把新字段纳入区间。
+
+新增 1 项漂移检测测试（双向）。测试总数 56（51 CLI + 5 适配器）。
+
 ## 0.4.3 — 纹理 key 检查项目级聚合（2026-08-16）
 
 以 StarValley（JS 农场项目，集中式 PreloadScene）实测发现并修复：

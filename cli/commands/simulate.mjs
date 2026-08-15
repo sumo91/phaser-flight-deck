@@ -154,9 +154,22 @@ export async function simulate(args, options) {
   const { facts, failed } = checkBands(report, profile);
   const verdict = failed ? 'FAILED' : 'PASSED';
   const reportFields = Object.fromEntries(numericFields(report).map((key) => [key, report[key]]));
+  // 剖面字段漂移检测：harness 新增字段会静默绕过 band；消失字段留下不再核对的 stale band。
+  // 不改变裁决（没有基线就无法定性），但必须可见——防"门看起来关着，新字段绕着走"。
+  // （SwordIdle 实测：harness 后加的 gold 字段一直未入剖面，平衡门从未检查过它）
+  const bands = profile.bands ?? {};
+  const uncheckedFields = numericFields(report).filter((key) => !(key in bands));
+  const staleBands = Object.keys(bands).filter((key) => report[key] === undefined);
+  const hasDrift = uncheckedFields.length > 0 || staleBands.length > 0;
+  const driftNote = hasDrift
+    ? `（剖面与 harness 字段不一致：${[
+        uncheckedFields.length ? `未入 band: ${uncheckedFields.join('/')}` : '',
+        staleBands.length ? `stale band: ${staleBands.join('/')}` : '',
+      ].filter(Boolean).join('；')}——建议重新 profile）`
+    : '';
   return envelope(verdict, verdict === 'FAILED'
     ? `平衡模拟 ${hours}h 越出剖面区间——数值改动可能引入节奏回归`
-    : `平衡模拟 ${hours}h 全部落在剖面区间内`, {
+    : `平衡模拟 ${hours}h 全部落在剖面区间内${driftNote}`, {
     kind: 'simulate',
     decisiveStage: 'simulate',
     facts: [
@@ -167,10 +180,21 @@ export async function simulate(args, options) {
         actual: reportFields,
       }),
       ...facts,
+      ...(uncheckedFields.length ? [fact('unchecked_field', 'simulate',
+        `报告字段 ${uncheckedFields.join(', ')} 不在剖面 bands 中——harness 新增字段正绕过平衡门`, {
+        actual: { unchecked: uncheckedFields },
+        expected: '重新 pdeck simulate-profile 把当前全部数值字段纳入区间',
+      })] : []),
+      ...(staleBands.length ? [fact('stale_band', 'simulate',
+        `剖面 band 字段 ${staleBands.join(', ')} 未出现在本次报告中——harness 输出已变化，该区间未被核对`, {
+        actual: { stale: staleBands },
+      })] : []),
     ],
-    nextSteps: failed
-      ? ['对比剖面区间定位越界维度；确认是有意调整时 pdeck simulate-profile 更新剖面']
-      : ['数值改动后重跑 pdeck simulate 作为平衡回归门'],
+    nextSteps: [
+      ...(failed ? ['对比剖面区间定位越界维度；确认是有意调整时 pdeck simulate-profile 更新剖面'] : []),
+      ...(!failed && !hasDrift ? ['数值改动后重跑 pdeck simulate 作为平衡回归门'] : []),
+      ...(hasDrift ? ['剖面与 harness 字段已漂移，确认当前字段集后重新 pdeck simulate-profile'] : []),
+    ],
   });
 }
 

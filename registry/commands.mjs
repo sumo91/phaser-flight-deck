@@ -26,6 +26,7 @@ export const CLI_OPTIONS = Object.freeze({
   tag: option(true, 'TAG', 'Git tag of the phaser repo to vendor skills from'),
   limit: option(true, 'N', 'Evidence index result limit'),
   query: option(true, 'JSON', 'Runtime probe query JSON list (window.__pdeck keys)'),
+  script: option(true, 'PATH', 'Playtest script path (run playtest): JSON action steps'),
   tolerance: option(true, 'N', 'Visual changed-pixel ratio limit (default 0.02)'),
   threshold: option(true, 'N', 'Visual per-channel difference threshold 0-255 (default 16)'),
   hours: option(true, 'N', 'Simulation hours (default 48)'),
@@ -46,7 +47,7 @@ export const CLI_COMMANDS = Object.freeze({
   check: command('Static-scan source for removed/changed Phaser v4 APIs and unresolved texture keys', 'pdeck check [project] [--file PATH] [--json] [--severity warn|error]', ['json', 'project', 'file', 'severity', 'timeout'], [positional('project')]),
   api: command('Query the bundled Phaser type definitions (d.ts oracle)', 'pdeck api <query|exists|version> [query-text] [project] [--depth N] [--json]', ['json', 'project', 'depth', 'timeout'], [positional('mode', true), positional('query'), positional('project')]),
   verify: command('Run the narrow-to-broad verification ladder: version consistency → tsc → build → real browser (canvas/console/input) → screenshot evidence', 'pdeck verify [project] [--json] [--timeout SECONDS] [--no-capture]', ['json', 'project', 'timeout', 'capture', 'no-capture'], [positional('project')]),
-  run: command('Dev server lifecycle and headless browser observation', 'pdeck run <serve|snapshot|console|probe|watch|observe> [url|project] [--json] [--timeout SECONDS]', ['json', 'project', 'url', 'output', 'port', 'stop', 'seconds', 'viewport', 'timeout', 'query'], [positional('action', true, 'serve|snapshot|console|probe|watch|observe'), positional('target', false, 'serve/observe: 项目路径；其余动作: 目标 URL')], {
+  run: command('Dev server lifecycle and headless browser observation', 'pdeck run <serve|snapshot|console|probe|watch|observe|playtest> [url|project|script] [--json] [--timeout SECONDS]', ['json', 'project', 'url', 'output', 'port', 'stop', 'seconds', 'viewport', 'timeout', 'query', 'script'], [positional('action', true, 'serve|snapshot|console|probe|watch|observe|playtest'), positional('target', false, 'serve/observe: 项目路径；snapshot/console/probe/watch: 目标 URL；playtest: 剧本路径')], {
     defaultAction: 'serve',
     actions: {
       serve: { usage: 'pdeck run serve [project] [--port N] [--stop]', options: ['project', 'port', 'stop', 'json'], minimumPositionals: 1, maximumPositionals: 2 },
@@ -54,6 +55,8 @@ export const CLI_COMMANDS = Object.freeze({
       console: { usage: 'pdeck run console <url> [--seconds N]', options: ['url', 'seconds', 'json', 'timeout'], minimumPositionals: 2, maximumPositionals: 2 },
       probe: { usage: 'pdeck run probe <url> --query JSON', options: ['url', 'query', 'json', 'timeout'], minimumPositionals: 2, maximumPositionals: 2 },
       watch: { usage: 'pdeck run watch <url> [--seconds N]', options: ['url', 'seconds', 'json', 'timeout'], minimumPositionals: 2, maximumPositionals: 2 },
+      observe: { usage: 'pdeck run observe [project] [--port N] [--seconds N]', options: ['project', 'port', 'seconds', 'json', 'timeout'], minimumPositionals: 1, maximumPositionals: 2 },
+      playtest: { usage: 'pdeck run playtest <script.json> [project] [--url URL] [--viewport WxH]', options: ['script', 'project', 'url', 'viewport', 'json', 'timeout'], minimumPositionals: 2, maximumPositionals: 3 },
     },
   }),
   init: command('Conservative project scaffold (dry-run by default; --apply commits; never runs npm install)', 'pdeck init [project] [--apply] [--json]', ['json', 'project', 'apply'], [positional('project')]),
@@ -100,9 +103,10 @@ export const PI_FIELDS = Object.freeze({
   threshold: field('number', { minimum: 0, maximum: 255, description: 'Visual per-channel difference threshold (default 16)' }),
   hours: field('integer', { minimum: 1, maximum: 720, description: 'Simulation hours (default 48)' }),
   runAction: field('enum', {
-    values: ['serve', 'snapshot', 'console', 'probe', 'watch', 'observe'],
-    description: 'pdeck_run action: serve dev server lifecycle; snapshot screenshot; console error collection; probe runtime state via window.__pdeck; watch streamed observation; observe console-style observation with auto server lifecycle (start if needed, cleanup only what it started)',
+    values: ['serve', 'snapshot', 'console', 'probe', 'watch', 'observe', 'playtest'],
+    description: 'pdeck_run action: serve dev server lifecycle; snapshot screenshot; console error collection; probe runtime state via window.__pdeck; watch streamed observation; observe console-style observation with auto server lifecycle; playtest script-driven robot player (press/hold/click/expect/collect/capture steps on the real UI)',
   }),
+  script: field('string', { maxLength: 512, description: 'Playtest script path (run playtest): JSON file with steps [{do:press|hold|wait|click|expect|collect|capture, ...}]' }),
   visualAction: field('enum', {
     values: ['baseline', 'test'],
     description: 'pdeck_visual action: baseline capture a reference screenshot; test compare current screen against the baseline (pixel diff)',
