@@ -4,7 +4,8 @@
 
 Agent toolchain for **Phaser 4 web games**: project health checks, v4 API static scanning,
 an API-truth oracle over the bundled type definitions, a narrow-to-broad verification ladder,
-dev-server lifecycle with headless-browser observation, visual regression, and a balance-simulation gate.
+dev-server lifecycle with headless-browser observation, script-driven robot-player playtesting,
+visual regression, and a balance-simulation gate.
 Zero-dependency CLI execution core + a single declarative command registry + a thin Pi extension
 wrapper + project skills and a runtime probe.
 
@@ -12,7 +13,8 @@ wrapper + project skills and a runtime probe.
 PASSED/FAILED/INCONCLUSIVE/CANCELLED verdict, evidence facts, and deterministic next steps.*
 
 为 **Phaser 4 网页游戏项目**提供健康检查、v4 API 静态扫描、API 事实预言机、
-从窄到宽验证阶梯、dev server 生命周期与无头浏览器观察、视觉回归与平衡模拟门。
+从窄到宽验证阶梯、dev server 生命周期与无头浏览器观察、剧本驱动机器人玩家玩测、
+视觉回归与平衡模拟门。
 
 设计原则（来自 Godot Flight Deck / Phaser Project Toolkit 实战）：
 
@@ -28,7 +30,7 @@ PASSED/FAILED/INCONCLUSIVE/CANCELLED verdict, evidence facts, and deterministic 
 | 需求 | 必需/可选 | 说明 |
 |---|---|---|
 | Node.js ≥ 20 | 必需 | CLI 与扩展运行时 |
-| Google Chrome 或 Edge | 可选 | `verify` / `run snapshot|console|observe` / `baseline` / `visual-test` 的浏览器证据需要；缺失时优雅降级为 INCONCLUSIVE + 安装指引 |
+| Google Chrome 或 Edge | 可选 | `verify` / `run snapshot|console|watch|observe|playtest` / `baseline` / `visual-test` 的浏览器证据需要；缺失时优雅降级为 INCONCLUSIVE + 安装指引 |
 | playwright-core | 可选 | 首次 `npm install` 一并安装；缺失时同上降级 |
 | git | 可选 | 仅 `vendor-skills` 需要 |
 | tsx（项目内） | 可选 | 项目的 `.ts` 模拟 harness 需要 |
@@ -106,6 +108,39 @@ pdeck help
 风险分级与 Pi 确认门：只读（none）直接执行；generated-write 首次触发时三选一授权
 （永久/本次会话/拒绝）；project-write 与 host-write 同样走授权。见 [Pi 集成](#pi-集成)。
 
+## 玩测剧本（run playtest）
+
+JSON 剧本驱动机器人玩家在**真实 UI** 上玩，并可直接注入设计逻辑断言：
+
+```json
+{
+  "name": "开局走一步",
+  "steps": [
+    { "do": "wait", "ms": 800 },
+    { "do": "press", "key": "Enter" },
+    { "do": "wait", "ms": 2500 },
+    { "do": "expect", "that": "已进入游戏（会话初始化）", "eval": "() => !!(window.__session && window.__session.time)" },
+    { "do": "collect", "that": "起点（借页面全局暂存）", "eval": "() => { const s = window.__game.scene.scenes.find(x => x.scene.key === 'Farm'); window.__pt = { x: s && s.player ? s.player.x : null }; return window.__pt; }" },
+    { "do": "hold", "key": "d", "ms": 800 },
+    { "do": "expect", "that": "玩家向右移动了", "eval": "() => { const s = window.__game.scene.scenes.find(x => x.scene.key === 'Farm'); return !!s.player && window.__pt !== null && s.player.x > window.__pt.x; }" },
+    { "do": "capture", "as": "moved" }
+  ]
+}
+```
+
+| 动作 | 字段 | 说明 |
+|---|---|---|
+| `press` / `hold` | `key`（hold 另需 `ms` ≤10000） | 键盘；`click` 用 `x,y` 坐标 |
+| `wait` | `ms` | 等待 |
+| `expect` | `that`（描述）、`eval` | 页面内求值，假值/抛错 → FAILED（事实带步骤号） |
+| `collect` | `that`、`eval` | 页面内求值并作为证据记录（有界） |
+| `capture` | `as` | 截图落 `.pdeck/captures/playtest-<as>-*.png` |
+
+- `eval` 支持 `'() => …'` 函数串与 `'…'` 纯表达式两种形式；**设计逻辑注入**直调项目暴露的
+  `window.__session` / `window.__game` 等 DEV 句柄（前后对比可借页面全局暂存）
+- 服务生命周期同 observe：`--url` 直连运行中的页面，或自动起停自己的服务
+- 剧本校验（≤64 步、动作/字段合法）在起浏览器之前完成，错误信息带步骤号与 JSON 行列位置
+
 ## Pi 集成
 
 安装后 Agent 获得工具：
@@ -145,7 +180,7 @@ pdeck help
 2. **工具目录路径别移动**：settings.json 里是绝对路径注册；移动后需同步修改 `extensions`/`skills` 数组。
 3. **撤销授权**：删除工具目录 `trust.json`（或其中对应条目）；`/pdeck-authorize` 可查看/调整授权状态。
 4. **vendor-skills 需要 GitHub 可达**：网络受限环境会快速 INCONCLUSIVE；可在可达环境执行后复制 `skills/vendor/`，或按 `skills/vendor/README.md` 手动操作。
-5. **端口冲突策略**：`run serve` 预检拒绝外来占用（避免 localhost URL 歧义），换 `--port` 或先确认占用者；`run observe` 会自动起停自己的服务，不触碰既有进程。
+5. **端口冲突策略**：`run serve` 预检拒绝外来占用（避免 localhost URL 歧义），换 `--port` 或先确认占用者；`run observe|playtest` 会自动起停自己的服务，不触碰既有进程——未显式指定端口时若默认口被外部占用（多项目并发开发常态）会自动尝试 5173-5178 候选，显式 `--port` 仍严格拒绝。
 
 ## 测试
 
