@@ -20,6 +20,7 @@ export const CLI_OPTIONS = Object.freeze({
   seconds: option(true, 'N', 'Observation window seconds'),
   viewport: option(true, 'WxH', 'Browser viewport (default 1280x800)'),
   capture: option(false, '', 'Capture screenshot evidence during verify'),
+  'no-capture': option(false, '', 'Skip screenshot capture during verify'),
   apply: option(false, '', 'Commit a write operation (init: write template files)'),
   'dry-run': option(false, '', 'Validate without committing'),
   tag: option(true, 'TAG', 'Git tag of the phaser repo to vendor skills from'),
@@ -44,7 +45,7 @@ export const CLI_COMMANDS = Object.freeze({
   doctor: command('Assess Phaser project health: engine version vs registry, toolchain, architecture isolation', 'pdeck doctor [project] [--json] [--offline] [--severity warn|error]', ['json', 'project', 'offline', 'severity', 'timeout'], [positional('project')]),
   check: command('Static-scan source for removed/changed Phaser v4 APIs and unresolved texture keys', 'pdeck check [project] [--file PATH] [--json] [--severity warn|error]', ['json', 'project', 'file', 'severity', 'timeout'], [positional('project')]),
   api: command('Query the bundled Phaser type definitions (d.ts oracle)', 'pdeck api <query|exists|version> [query-text] [project] [--depth N] [--json]', ['json', 'project', 'depth', 'timeout'], [positional('mode', true), positional('query'), positional('project')]),
-  verify: command('Run the narrow-to-broad verification ladder: version consistency → tsc → build → real browser (canvas/console/input) → screenshot evidence', 'pdeck verify [project] [--json] [--timeout SECONDS] [--no-capture]', ['json', 'project', 'timeout', 'capture'], [positional('project')]),
+  verify: command('Run the narrow-to-broad verification ladder: version consistency → tsc → build → real browser (canvas/console/input) → screenshot evidence', 'pdeck verify [project] [--json] [--timeout SECONDS] [--no-capture]', ['json', 'project', 'timeout', 'capture', 'no-capture'], [positional('project')]),
   run: command('Dev server lifecycle and headless browser observation', 'pdeck run <serve|snapshot|console|probe|watch|observe> [url|project] [--json] [--timeout SECONDS]', ['json', 'project', 'url', 'output', 'port', 'stop', 'seconds', 'viewport', 'timeout', 'query'], [positional('action', true, 'serve|snapshot|console|probe|watch|observe'), positional('target', false, 'serve/observe: 项目路径；其余动作: 目标 URL')], {
     defaultAction: 'serve',
     actions: {

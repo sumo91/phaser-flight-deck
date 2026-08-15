@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { CLI_COMMANDS, CLI_OPTIONS } from '../registry/commands.mjs';
 import { failureEnvelope, renderEnvelope } from './result-envelope.mjs';
 
-const VERSION = '0.4.0';
+const VERSION = '0.4.1';
 
 function parseArgv(argv) {
   const tokens = [...argv];
@@ -35,17 +35,17 @@ function parseArgv(argv) {
 }
 
 function parseProject(parsed) {
-  // project 来源优先级：--project > 命令声明中的最后一个可选 project 位置参数
+  // project 来源优先级：--project > 命令声明中的 project 位置参数
   const options = { ...parsed.options };
   if (options.project) return options;
   const cmd = parsed.command ? CLI_COMMANDS[parsed.command] : null;
   if (!cmd) return options;
-  const hasProjectPositional = cmd.positionals.some((p) => p.name === 'project');
-  if (!hasProjectPositional) return options;
-  // 除必需的 non-project 参数外，多出的最后一个位置参数视为 project
-  const requiredNonProject = cmd.positionals.filter((p) => p.required && p.name !== 'project').length;
-  if (parsed.positionals.length > requiredNonProject) {
-    options.project = parsed.positionals.pop();
+  const projectIndex = cmd.positionals.findIndex((p) => p.name === 'project');
+  if (projectIndex < 0) return options;
+  // 位置参数按声明顺序左到右填充槽位；只有 project 之前的槽位都已填满时，
+  // 多出的参数才落入 project——否则 `api query <词>` 的查询文本会被吞成 project
+  if (parsed.positionals.length > projectIndex) {
+    options.project = parsed.positionals.splice(projectIndex, 1)[0];
   }
   return options;
 }

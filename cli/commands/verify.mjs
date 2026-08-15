@@ -88,7 +88,8 @@ export function pruneEvidenceFiles(root) {
 
 export async function verify(args, options) {
   const startTime = Date.now();
-  const { project, timeout = 120, capture = true } = options;
+  const { project, timeout = 120 } = options;
+  const capture = options['no-capture'] ? false : (options.capture ?? true);
   const proj = detectProject(project ?? process.cwd());
   if (!proj.found) {
     return inconclusiveEnvelope('verify', `不是可识别的 Phaser 项目: ${proj.reason}`, [
@@ -255,6 +256,8 @@ export async function verify(args, options) {
                 await page.screenshot({ path: shot });
                 artifacts.push(shot);
                 stageFact('captured', 'capture', '截图证据已保存', { actual: { path: shot } });
+              } else {
+                stageFact('skipped', 'capture', '--no-capture：跳过截图');
               }
             }
           } catch (error) {

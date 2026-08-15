@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.1 — 外部反馈修复：CLI 契约与诚实性（2026-08-15）
+
+来自另一模型（DeepSeek）交叉评审的必修项修复：
+
+1. **`parseProject` 位置参数按声明槽位左到右填充**：`pdeck api query <词>`（不带 project）
+   的查询文本不再被吞成 project 路径；仅当 project 之前的槽位都已填满时，
+   多出的参数才落入 project。
+2. **`run watch --json` stdout 纯净**：观察进度行改走 stderr，stdout 只有最终 JSON
+   信封——`--json` 的机器可读承诺不再被破坏。
+3. **`--no-capture` 落地**：registry usage 早已写了它但解析器不认识——现在 verify
+   真正支持 `--no-capture` 跳过截图（capture 阶段如实记 skipped）。
+4. **doctor 未安装语义诚实化**：仅声明未安装时报 `version_unknown` 并给 npm install
+   指引，不再谎称"安装版本与 registry latest 一致"（证据与谎言分离）。
+5. **发布卫生**：package.json `files` 补 `templates/`（按 npm 包安装后 `init` 不再必挂）；
+   package-lock.json 重建对齐 0.4.1。
+
+新增 5 项回归测试（全部无需夹具，CI 可稳定跑）：api query 无 project、
+watch --json 可解析、doctor 未安装语义、--no-capture 契约、npm pack 含模板且
+解包产物 init 可用。测试总数 50（45 CLI + 5 适配器）。
+
+附记：评审中一度怀疑"系统代理劫持 127.0.0.1 导致 goto 超时"并试改 browser.mjs，
+实测推翻——超时真因是验收脚本用 execFileSync 冻结了父进程事件循环（服务器无法
+应答）；未引入未证实的 workaround，browser.mjs 保持原样。
+
 ## 0.4.0 — 多宿主适配器（2026-08-14）
 
 - **`npm run generate`**：从单一契约源（registry/commands.mjs + 主技能）生成三宿主适配器包（dist/ 已提交）：

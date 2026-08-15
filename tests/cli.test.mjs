@@ -414,3 +414,84 @@ test('regression: 缺失前置的阶段如实 INCONCLUSIVE，聚合裁决诚实'
   assert.match(out, /跳过：无视觉基线/);
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ===== v0.4.1：外部反馈修复回归 =====
+test('api: query 文本不被吞成 project（合成 phaser 安装，无 project 参数）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-apiq-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { phaser: '4.2.1' } }));
+  mkdirSync(join(dir, 'node_modules', 'phaser', 'types'), { recursive: true });
+  writeFileSync(join(dir, 'node_modules', 'phaser', 'package.json'), JSON.stringify({ name: 'phaser', version: '4.2.1' }));
+  writeFileSync(join(dir, 'node_modules', 'phaser', 'types', 'phaser.d.ts'), 'fillPoints(points, closeShape, closePath, endAngle): Graphics;\n');
+  // 不带 project 位置参数：查询文本必须按声明顺序落入 query 槽位（修复前被吞成 project → INCONCLUSIVE）
+  const out = pdeck(['api', 'query', 'fillPoints'], dir);
+  assert.match(out, /verdict: PASSED/);
+  assert.match(out, /fillPoints/);
+  // 显式 project 位置参数仍然正常
+  const out2 = pdeck(['api', 'query', 'fillPoints', dir]);
+  assert.match(out2, /verdict: PASSED/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('run watch: --json 时 stdout 为纯 JSON（进度走 stderr）', { timeout: 120000 }, async () => {
+  const { createServer } = await import('node:http');
+  const server = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end('<!doctype html><html><body>watch json test</body></html>');
+  });
+  await new Promise((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  try {
+    let out;
+    try {
+      out = pdeck(['run', 'watch', url, '--seconds', '2', '--json']);
+    } catch (err) {
+      out = err.stdout; // FAILED 裁决退出码 1，信封仍在 stdout
+    }
+    const env = JSON.parse(out); // 任何进度行混入 stdout 都会在这里抛错
+    assert.ok(['PASSED', 'FAILED', 'INCONCLUSIVE'].includes(env.verdict));
+    // 浏览器可用时 kind=run.watch；不可用时为执行类信封——两种都证明 stdout 是纯 JSON
+  } finally {
+    server.close();
+  }
+});
+
+test('doctor: 仅声明未安装时禁止报 version_current（证据与谎言分离）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-docnp-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { phaser: '4.2.1' } }));
+  const out = pdeck(['doctor', dir, '--timeout', '10'], dir, 60000);
+  assert.ok(!out.includes('version_current'), '未安装时不得出现 version_current');
+  assert.ok(!out.includes('与 registry latest 一致'), '未安装时不得声称版本一致');
+  assert.ok(out.includes('version_unknown') || out.includes('registry_unavailable'), '应报 version_unknown（或 registry 不可达）');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('verify: --no-capture 选项被接受（registry 与实现对齐）', () => {
+  const desc = JSON.parse(pdeck(['describe', 'verify', '--json']));
+  assert.ok(desc.options.includes('no-capture'), 'registry 应声明 no-capture');
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-nocap-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { phaser: '4.2.1' } }));
+  const out = pdeck(['verify', dir, '--no-capture', '--timeout', '20']);
+  assert.ok(!out.includes('未知选项'), '--no-capture 不再是未知选项');
+  assert.match(out, /INCONCLUSIVE/); // 未安装 → 如实不完整
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('npm pack: 产物含 templates/project 且 init 可用', { timeout: 180000 }, () => {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const work = mkdtempSync(join(tmpdir(), 'pdeck-pack-'));
+  // tgz 直接落到临时目录，随后在目录内用相对文件名解包（绝对路径的盘符冒号会被 tar 当远程主机）
+  const packOut = execSync(`npm pack --json --pack-destination "${work}"`, { cwd: root, encoding: 'utf8', timeout: 120000 });
+  const pack = JSON.parse(packOut.slice(packOut.indexOf('['), packOut.lastIndexOf(']') + 1));
+  const listed = (pack[0].files ?? []).map((f) => String(f.path).replace(/\\/g, '/'));
+  assert.ok(listed.some((p) => p.startsWith('templates/project/')), 'templates/project 必须进入 npm 包');
+  try {
+    execFileSync('tar', ['-xf', pack[0].filename], { cwd: work, timeout: 60000 });
+    // 从解包产物里跑 init --apply：模板按 import.meta.url 相对定位，缺 templates/ 时必失败
+    mkdirSync(join(work, 'newproj')); // init 约定：目标目录需先存在（与既有 init 测试一致）
+    const initOut = execFileSync(process.execPath, [join(work, 'package', 'cli', 'pdeck.mjs'), 'init', join(work, 'newproj'), '--apply'], { encoding: 'utf8', timeout: 60000 });
+    assert.match(initOut, /verdict: PASSED/);
+    assert.ok(existsSync(join(work, 'newproj', 'src', 'core', 'GameState.ts')), '打包产物能完整脚手架');
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+});

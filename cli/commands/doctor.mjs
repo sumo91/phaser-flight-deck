@@ -24,13 +24,22 @@ export async function doctor(args, options) {
   if (!offline) {
     const timeline = await registryTimeline('phaser', Math.min(timeout, 8) * 1000);
     if (timeline.ok) {
-      const behind = proj.phaserInstalled && timeline.latest && proj.phaserInstalled !== timeline.latest;
-      const quiet = quietPeriodDays(timeline);
-      fresh = { latest: timeline.latest, behind, quietDays: quiet };
-      facts.push(fact(behind ? 'version_behind' : 'version_current', 'doctor',
-        behind ? `安装版本落后于 registry latest` : '安装版本与 registry latest 一致', {
+      // 未安装时无从对照——如实报 version_unknown，禁止谎称"与 latest 一致"（证据与谎言分离）
+      let behind = false;
+      if (!proj.phaserInstalled) {
+        facts.push(fact('version_unknown', 'doctor',
+          'Phaser 未安装（仅 package.json 声明）——npm install 后才能对照 registry', {
+          actual: { declared: proj.phaserDeclared, latest: timeline.latest },
+        }));
+      } else {
+        behind = Boolean(timeline.latest && proj.phaserInstalled !== timeline.latest);
+        facts.push(fact(behind ? 'version_behind' : 'version_current', 'doctor',
+          behind ? `安装版本落后于 registry latest` : '安装版本与 registry latest 一致', {
           actual: { installed: proj.phaserInstalled, latest: timeline.latest },
         }));
+      }
+      const quiet = quietPeriodDays(timeline);
+      fresh = { latest: timeline.latest, behind, quietDays: quiet };
       if (quiet !== null) {
         facts.push(fact(quiet >= 14 ? 'release_quiet' : 'release_active', 'doctor',
           quiet >= 14 ? `引擎已进入发布静默期（${quiet} 天无新版本）——不影响稳定性，但别再假设官方持续更新` : `引擎近期活跃（${quiet} 天内有新版本）`,
@@ -84,6 +93,7 @@ export async function doctor(args, options) {
     facts,
     nextSteps: [
       ...(fresh?.behind ? [`npm install phaser@${fresh.latest} 或确认当前版本为有意钉版`] : []),
+      ...(!proj.phaserInstalled ? ['npm install 后重跑，补齐版本对照'] : []),
       '运行 pdeck check 扫描 v4 API 使用问题',
       '运行 pdeck api 查询 Phaser API 事实',
     ],

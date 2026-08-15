@@ -407,7 +407,9 @@ export async function runWatch(args, options) {
         consoleErrors: consoleErrors.length,
         warnings: consoleWarnings.length,
       };
-      process.stdout.write(`[watch ${status.t}s] errors=${status.consoleErrors}/${status.pageErrors} warnings=${status.warnings}\n`);
+      // --json 时进度走 stderr，保证 stdout 只有最终 JSON 信封（机器可读承诺）
+      const progress = `[watch ${status.t}s] errors=${status.consoleErrors}/${status.pageErrors} warnings=${status.warnings}\n`;
+      (options.json ? process.stderr : process.stdout).write(progress);
     }
     const errors = splitErrors(consoleErrors);
     const warnings = splitWarnings(consoleWarnings);

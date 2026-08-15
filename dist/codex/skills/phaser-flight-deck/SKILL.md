@@ -39,7 +39,7 @@ node <phaser-flight-deck目录>/cli/pdeck.mjs <command> [args] --json   # 兑底
 - 技能路径：`$HOME/.agents/skills/phaser-flight-deck/`
 - **确认门**：prompt 约定——写入类命令执行前必须先向用户说明并获同意
 
-_本文件由 scripts/generate-adapters.mjs 自动生成（v0.4.0），勿手改；源文件 skills/phaser4-flight-deck/SKILL.md。_
+_本文件由 scripts/generate-adapters.mjs 自动生成（v0.4.1），勿手改；源文件 skills/phaser4-flight-deck/SKILL.md。_
 
 # Phaser 4 Flight Deck 主技能
 

@@ -1,20 +1,20 @@
 {
-  "generatedAt": "2026-08-14T17:26:53.585Z",
-  "version": "0.4.0",
+  "generatedAt": "2026-08-15T10:34:01.401Z",
+  "version": "0.4.1",
   "files": {
-    "claude-code/skills/phaser-flight-deck/SKILL.md": "5ea95b8a3e1c77db4ffe588b741ba64f0ff7fc1ffe9fc1d1b3f8578ba33620a3",
+    "claude-code/skills/phaser-flight-deck/SKILL.md": "8194dfe4ad2d7e2c975cbe23f23c0bdfb78de4f0754b0f6245f3a9b3ea4f8368",
     "claude-code/commands/pdeck-regression.md": "b2693ad1d69044a40715bde2539e50ee65a66ff5350b8dce1264e437c4189e57",
     "claude-code/commands/pdeck-verify.md": "d6b04e100b70722fa5c964e46145b5d6d3d115cb4d75f70cc361f83f5963a319",
     "claude-code/commands/pdeck-doctor.md": "e9740e28a6db60f97ccc7d5907a92fd30f205de2ed26c02b06b0f9a4588371ea",
     "claude-code/commands/pdeck-check.md": "232e93332cc5eeacfd25c29d8a67db158b533923931fc3d37945b4e398286aa8",
-    "cursor/skills/phaser-flight-deck/SKILL.md": "ce872d445d91b53aaf35d74b5d44c669031eb7a84ee3ca4b7d7829856e36462c",
+    "cursor/skills/phaser-flight-deck/SKILL.md": "99c1a020d016b60369c9d92fe582fdab4b3bb147c375b2cb6c38a928b0cd0b9a",
     "cursor/commands/pdeck-regression.md": "d0fa787804bb570ff08490d28a35b5b66db31a7293ba6334563c3236be57ac7e",
     "cursor/commands/pdeck-verify.md": "e703318fda641a0728f45af5c00b212cc9f0ce2c0f5b31695e86f7b9c53c4fbb",
     "cursor/commands/pdeck-doctor.md": "f317768402813680f867e23308a0256c27ab269d8dd465cba7866e678d1630ec",
     "cursor/commands/pdeck-check.md": "1c7d44b5525e011b9efdd75106d451d6515b4ee53af8e59068e42682b1450768",
-    "codex/skills/phaser-flight-deck/SKILL.md": "b39e699d3f0eccbcfead13d9504347c0aee075a36b1a12af1db0f3bc7430077d",
+    "codex/skills/phaser-flight-deck/SKILL.md": "359d696c1547b8e625caa304defac2daf31510419979272b325dc2882b314edd",
     "claude-code/hooks/pdeck-confirm.mjs": "7328130d3ce7bc5306099e873dbcc1a4efe619aec344ee9201f97fed5aea4c57",
     "claude-code/hooks/settings.json.example": "3ea6df01c9020ba43b9ab440e5916f208016d75feffdd2ad3308cc82fb59e3f3",
-    "README.md": "e7b17cbc8cce2198947ed35abccdf0f2f4e3fbb927b515dbd75d0d0fb1b46c04"
+    "README.md": "17e75c2cd57d03367da28dd27f35f6bfa56df8ebb0a2c8cff39cbae46eabc85e"
   }
 }
