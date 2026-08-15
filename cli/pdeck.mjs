@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { CLI_COMMANDS, CLI_OPTIONS } from '../registry/commands.mjs';
 import { failureEnvelope, renderEnvelope } from './result-envelope.mjs';
 
-const VERSION = '0.4.2';
+const VERSION = '0.4.3';
 
 function parseArgv(argv) {
   const tokens = [...argv];

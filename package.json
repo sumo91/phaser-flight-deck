@@ -1,6 +1,6 @@
 {
   "name": "phaser-flight-deck",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "description": "Agent-tooling flight deck for Phaser 4 web-game projects: zero-dependency CLI execution core, single declarative command registry, Pi extension wrapper, project skills and runtime probe.",
   "type": "module",

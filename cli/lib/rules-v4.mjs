@@ -143,7 +143,29 @@ export function scanSource(filePath, content, rules = V4_RULES, options = {}) {
 }
 
 // 纹理 key 引用校验（启发式）
-export function textureKeyFindings(filePath, content) {
+// createdPatterns 复用于项目级聚合：集中式 PreloadScene 是 Phaser 常见模式，
+// 逐文件判定会对跨文件引用成片误报——先全项目收集创建点，再逐文件判悬空。
+// 接收者放宽：tex.addCanvas / const load = this.load 等别名写法都要能命中（StarValley 实测）。
+const TEXTURE_CREATED_PATTERNS = [
+  /\.addCanvas\s*\(\s*['"]([^'"]+)['"]/,
+  /\bload\s*\.\s*(?:image|spritesheet|atlas|multiatlas)\s*\(\s*['"]([^'"]+)['"]/,
+  /\.generateTexture\s*\(\s*['"]([^'"]+)['"]/,
+  /\.addDynamicTexture\s*\(\s*['"]([^'"]+)['"]/,
+];
+
+// 收集一个文件内容中静态创建的纹理 key（供项目级聚合）
+export function collectCreatedKeys(content) {
+  const keys = new Set();
+  for (const line of content.split('\n')) {
+    for (const pattern of TEXTURE_CREATED_PATTERNS) {
+      const m = pattern.exec(line);
+      if (m) keys.add(m[1]);
+    }
+  }
+  return keys;
+}
+
+export function textureKeyFindings(filePath, content, options = {}) {
   const findings = [];
   const created = new Set();
   const used = [];
@@ -151,14 +173,8 @@ export function textureKeyFindings(filePath, content) {
   // 动态纹理工厂（addCanvas/getTex 用变量 key）→ 该文件的未解析 key 不可靠，整体跳过
   let dynamicFactory = false;
   const factoryPatterns = [
-    /\.textures\.addCanvas\s*\(\s*[A-Za-z_$][\w$]*\s*,/,
+    /\.addCanvas\s*\(\s*[A-Za-z_$][\w$]*\s*,/,
     /\bgetTex\s*\(\s*[A-Za-z_$][\w$]*\s*,/,
-  ];
-  const createdPatterns = [
-    /\.textures\.addCanvas\s*\(\s*['"]([^'"]+)['"]/,
-    /\.load\.(?:image|spritesheet|atlas|multiatlas)\s*\(\s*['"]([^'"]+)['"]/,
-    /\.generateTexture\s*\(\s*['"]([^'"]+)['"]/,
-    /\.addDynamicTexture\s*\(\s*['"]([^'"]+)['"]/,
   ];
   const usedPatterns = [
     /\.add\.(?:image|sprite|tileSprite|particles)\s*\(\s*[^,]+,\s*[^,]+,\s*['"]([^'"]+)['"]/,
@@ -167,7 +183,7 @@ export function textureKeyFindings(filePath, content) {
   ];
   for (const line of lines) {
     if (!dynamicFactory && factoryPatterns.some((pattern) => pattern.test(line))) dynamicFactory = true;
-    for (const pattern of createdPatterns) {
+    for (const pattern of TEXTURE_CREATED_PATTERNS) {
       const m = pattern.exec(line);
       if (m) created.add(m[1]);
     }
@@ -177,11 +193,13 @@ export function textureKeyFindings(filePath, content) {
     }
   }
   if (dynamicFactory) return findings; // 动态工厂：本文件 key 校验不可靠，静默跳过
+  const projectKeys = options.projectKeys;
   for (const use of used) {
     if (created.has(use.key)) continue;
+    if (projectKeys && projectKeys.has(use.key)) continue; // 全项目任意文件的静态创建点
     // 排除明显动态 key（拼接/变量）
     if (/[+$.]/.test(use.key)) continue;
-    findings.push({ key: use.key, snippet: use.line, hint: 'key 未在本文件可见的 load/addCanvas/generateTexture 中创建（跨文件或运行时动态创建除外）' });
+    findings.push({ key: use.key, snippet: use.line, hint: 'key 未在全项目可见的创建点（load/addCanvas/generateTexture）中找到——运行时动态创建除外' });
   }
   return findings;
 }

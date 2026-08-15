@@ -198,17 +198,42 @@ test('pruneEvidenceFiles: 每类只留最近 10 份', () => {
   assert.equal(captures.filter((n) => n.startsWith('verify-')).length, 10);
   rmSync(dir, { recursive: true, force: true });
 });
-// ===== 真实项目集成（SwordIdle 夹具）=====
+test('scanSource: addCanvas 使用点告实测警告（addcanvas-usage）', () => {
+  const findings = scanSource('a.ts', 'this.textures.addCanvas("icon_tex", iconCanvas);\n');
+  const hit = findings.find((f) => f.rule === 'addcanvas-usage');
+  assert.ok(hit, 'addCanvas 使用应触发实测警告规则');
+  assert.equal(hit.severity, 'warn');
+  assert.equal(hit.source, 'session-empirical');
+});
+
+test('textureKeyFindings: 跨文件集中创建不误报（项目级聚合）', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-xfile-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { phaser: '4.2.1' } }));
+  mkdirSync(join(dir, 'src'));
+  writeFileSync(join(dir, 'src', 'PreloadScene.js'), `tex.addCanvas('shipping-bin', shippingBinCanvas());\ntex.addCanvas('furn-table', tableCanvas());\n`);
+  writeFileSync(join(dir, 'src', 'FarmScene.js'), `const bin = this.add.image(100, 100, 'shipping-bin');\nthis.add.image(24, 24, 'furn-table');\n`);
+  const { check } = await import('../cli/commands/check.mjs');
+  const env = check([], { project: dir });
+  assert.equal(env.verdict, 'PASSED');
+  assert.ok(!env.facts.some((f) => f.classification === 'unresolved_texture_key'), '集中预加载场景的跨文件引用不应误报');
+  // 真悬空 key 仍要抓到（项目级聚合只豁免真实存在的创建点）
+  writeFileSync(join(dir, 'src', 'FarmScene.js'), `const bin = this.add.image(100, 100, 'shipping-bin');\nthis.add.image(24, 24, 'typo-key');\n`);
+  const env2 = check([], { project: dir });
+  assert.ok(env2.facts.some((f) => f.classification === 'unresolved_texture_key' && f.summary.includes('typo-key')), '未创建的 key 仍应报告');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ===== 真实项目集成（夹具）=====
 test('集成: doctor 真实项目 PASSED', { skip: !hasFixture }, () => {
   const out = pdeck(['doctor', FIXTURE, '--offline']);
   assert.match(out, /verdict: PASSED/);
   assert.match(out, /isolation_ok/);
 });
 
-test('集成: check 真实项目（我们的 v4 干净代码）', { skip: !hasFixture }, () => {
+test('集成: check 真实项目', { skip: !hasFixture }, () => {
   const out = pdeck(['check', FIXTURE]);
   assert.match(out, /verdict: PASSED/);
-  assert.match(out, /addCanvas|addcanvas/i); // 诚实的实测警告
+  assert.match(out, /scan_coverage/); // 项目无关的结构断言；addCanvas 警告由单元测试确定性覆盖
 });
 
 test('集成: api 预言机', { skip: !hasFixture }, () => {

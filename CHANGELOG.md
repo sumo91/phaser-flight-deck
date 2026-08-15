@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.3 — 纹理 key 检查项目级聚合（2026-08-16）
+
+以 StarValley（JS 农场项目，集中式 PreloadScene）实测发现并修复：
+
+- **纹理 key 跨文件误报（#20）**：key 可见性从逐文件改为**项目级两遍扫描**——先全项目
+  收集静态创建点（`collectCreatedKeys`），再逐文件判悬空。接收者正则同步放宽：
+  `tex.addCanvas(...)`/`const load = this.load` 等别名写法此前完全漏匹配
+  （原正则硬编码 `.textures.addCanvas`/`.load.`）。实测 StarValley 16 处误报 →
+  3 处残留，且残留均为模板字面量动态创建（`player-${dir}-${i}`），属静态分析的
+  诚实盲区，提示文案如实说明。SwordIdle 的 addCanvas 实测警告与 0 悬空不变。
+- **夹具断言去项目耦合（#21）**：`集成: check 真实项目` 此前断言输出含
+  `/addCanvas/i`——在无 addCanvas 使用的项目上"因错误的原因通过"（匹配到 expected
+  字段模板文字）。改为项目无关的结构断言（PASSED + scan_coverage）；
+  addcanvas-usage 规则改由确定性单元测试覆盖。
+
+新增 2 项测试（跨文件聚合、addcanvas-usage 单元）。测试总数 55（50 CLI + 5 适配器）；
+StarValley 与 SwordIdle 双夹具均 55/55 全绿——夹具跨项目可移植。
+
 ## 0.4.2 — 真实项目工作流跑出来的四项修复（2026-08-16）
 
 以 SwordIdle（Phaser 4.2.1 挂机游戏）为夹具完整跑通全工作流后修复：

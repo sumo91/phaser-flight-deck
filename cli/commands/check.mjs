@@ -2,7 +2,7 @@
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, relative } from 'node:path';
 import { detectProject } from '../lib/phaser-project.mjs';
-import { scanSource, textureKeyFindings, SOURCE_EXT, V4_RULES } from '../lib/rules-v4.mjs';
+import { scanSource, textureKeyFindings, collectCreatedKeys, SOURCE_EXT, V4_RULES } from '../lib/rules-v4.mjs';
 import { envelope, fact, inconclusiveEnvelope } from '../result-envelope.mjs';
 
 const MAX_FILES = 4000;
@@ -45,6 +45,16 @@ export function check(args, options) {
     return inconclusiveEnvelope('check', file ? `文件不存在或不是源文件: ${file}` : '未发现可扫描的源文件');
   }
 
+  // 第一遍：全项目收集静态创建的纹理 key（集中式 PreloadScene 模式下，跨文件引用不是悬空 key）
+  const projectKeys = new Set();
+  if (files.length > 1 || !file) {
+    for (const full of files) {
+      let content;
+      try { content = readFileSync(full, 'utf8'); } catch { continue; }
+      for (const key of collectCreatedKeys(content)) projectKeys.add(key);
+    }
+  }
+
   const findings = [];
   const keyFindings = [];
   let scanned = 0;
@@ -60,7 +70,7 @@ export function check(args, options) {
     const rel = relative(proj.root, full);
     const fileFindings = scanSource(rel, content, V4_RULES, { severity });
     for (const f of fileFindings) findings.push(f);
-    const keys = textureKeyFindings(rel, content);
+    const keys = textureKeyFindings(rel, content, { projectKeys });
     for (const k of keys) keyFindings.push({ ...k, file: rel });
   }
 
@@ -92,7 +102,7 @@ export function check(args, options) {
   }
   if (keyFindings.length) {
     for (const k of keyFindings.slice(0, 6)) {
-      facts.push(fact('unresolved_texture_key', 'check', `纹理 key "${k.key}" 未在本文件可见创建`, {
+      facts.push(fact('unresolved_texture_key', 'check', `纹理 key "${k.key}" 未在全项目可见创建`, {
         actual: { file: k.file, snippet: k.snippet },
         expected: k.hint,
       }));
@@ -115,7 +125,7 @@ export function check(args, options) {
     nextSteps: verdict === 'FAILED'
       ? [...new Set(errors.map((f) => f.fix))].slice(0, 6)
       : keyFindings.length
-        ? ['核对跨文件/运行时动态创建的纹理 key 是否为误报']
+        ? ['核对运行时动态创建的纹理 key 是否为误报']
         : ['运行 pdeck doctor 查看项目健康全貌'],
   });
 }

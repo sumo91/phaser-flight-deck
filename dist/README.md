@@ -1,7 +1,7 @@
 # 多宿主适配器包（自动生成，勿手改）
 
 生成命令：`npm run generate`（源：registry/commands.mjs + skills/phaser4-flight-deck/SKILL.md）
-版本：0.4.2
+版本：0.4.3
 
 | 宿主 | 安装 |
 |---|---|
