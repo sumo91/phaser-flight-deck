@@ -18,11 +18,13 @@
   <a href="https://github.com/sumo91/phaser-flight-deck/issues">提交问题</a>
 </p>
 
-> Agent 汇报"页面渲染正常"的时候，经常没人真的看过。Phaser Flight Deck 想治的就是这件事。
+> 让 Agent 写 Phaser 游戏，半天就能收到一屏代码。难点在交活那一刻，它自己怎么知道游戏真的能玩？tsc 通过、构建成功，游戏照样可以卡在标题屏挂一晚上。
 
-tsc 通过只说明类型对，dist 生成只说明产物在，游戏卡在标题屏挂一晚上，这两项照样全绿。这个仓库把"真的看过一眼"做成了命令。
+pdeck 是给 Agent 配的检查工具箱。写代码的时候查项目健康、扫 v4 已移除的 API、直接问类型定义事实，少踩官方文档没写的坑；交活之前，把游戏在真实浏览器里跑起来，让机器人玩家按剧本玩一遍，画面跟基线逐像素比对，数值交给无头模拟跑几十个小时挂机。Agent 用它在交付前自己把问题找完，交到你手上的是一个跑得通的游戏。
 
-pdeck 是零依赖 CLI，放进任何 agent 的 shell 都能跑。每次执行只回一份有界信封，裁决四种（PASSED / FAILED / INCONCLUSIVE / CANCELLED），后面挂着证据事实和下一步。跑通了什么、什么没跑、为什么拿不准，都写在信封里，模型想含糊也没有位置。浏览器相关命令需要系统 Chrome 或 Edge，缺失时降级为 INCONCLUSIVE 附安装指引，其余命令零依赖直接可用。
+每个命令的输出都是同一种格式，裁决加证据加下一步。Agent 汇报"验证过了"的时候，截图在哪、哪步断言通过，点开就能复核。
+
+CLI 零依赖，clone 下来就能跑。浏览器相关命令需要系统 Chrome 或 Edge，缺失时如实报 INCONCLUSIVE 附安装指引。
 
 *English readers can pass `--json` on any command to get a bounded envelope with a verdict, evidence facts and deterministic next steps.*
 
