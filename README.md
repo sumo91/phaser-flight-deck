@@ -1,10 +1,26 @@
-# Phaser Flight Deck
+<p align="center">
+  <img src="./assets/readme-cover.svg" alt="Phaser Flight Deck" width="100%">
+</p>
 
-> **v0.6.0** · 76 tests · MIT License · Node ≥ 20
+<p align="center">
+  <a href="https://github.com/sumo91/phaser-flight-deck/releases"><img alt="Version 0.6.0" src="https://img.shields.io/badge/version-0.6.0-E4593F?style=flat-square"></a>
+  <a href="./LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-313131?style=flat-square"></a>
+  <a href="./package.json"><img alt="Node >= 20" src="https://img.shields.io/badge/node-%3E%3D20-6B6258?style=flat-square"></a>
+  <a href="https://github.com/sumo91/phaser-flight-deck/actions/workflows/test.yml"><img alt="tests" src="https://img.shields.io/github/actions/workflow/status/sumo91/phaser-flight-deck/test.yml?style=flat-square&label=tests"></a>
+</p>
 
-[快速安装](#快速安装) · [玩测剧本](#玩测剧本) · [剧本驱动视觉回归](#剧本驱动视觉回归) · [命令总表](#命令总表) · [仓库结构](#仓库结构)
+<p align="center">
+  <a href="#快速安装">快速安装</a> ·
+  <a href="#玩测剧本">玩测剧本</a> ·
+  <a href="#剧本驱动视觉回归">视觉回归</a> ·
+  <a href="#命令总表">命令总表</a> ·
+  <a href="#仓库结构">仓库结构</a> ·
+  <a href="https://github.com/sumo91/phaser-flight-deck/issues">提交问题</a>
+</p>
 
-Agent 接手 Phaser 项目后最爱汇报的一句是"页面渲染正常"。这话经常没人真的看过。tsc 通过只说明类型对，dist 生成只说明产物在，游戏卡在标题屏挂一晚上，这两项照样全绿。这个仓库把"真的看过一眼"做成了命令。
+> Agent 汇报"页面渲染正常"的时候，经常没人真的看过。Phaser Flight Deck 想治的就是这件事。
+
+tsc 通过只说明类型对，dist 生成只说明产物在，游戏卡在标题屏挂一晚上，这两项照样全绿。这个仓库把"真的看过一眼"做成了命令。
 
 pdeck 是零依赖 CLI，放进任何 agent 的 shell 都能跑。每次执行只回一份有界信封，裁决四种（PASSED / FAILED / INCONCLUSIVE / CANCELLED），后面挂着证据事实和下一步。跑通了什么、什么没跑、为什么拿不准，都写在信封里，模型想含糊也没有位置。浏览器相关命令需要系统 Chrome 或 Edge，缺失时降级为 INCONCLUSIVE 附安装指引，其余命令零依赖直接可用。
 

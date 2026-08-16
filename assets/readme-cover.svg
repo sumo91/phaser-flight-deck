@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">Phaser Flight Deck</title>
+  <desc id="desc">Phaser 4 项目验证工具链</desc>
+  <defs>
+    <linearGradient id="deck" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#262B33"/>
+      <stop offset="1" stop-color="#1A1E25"/>
+    </linearGradient>
+    <linearGradient id="chalk" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F2F0EC"/>
+      <stop offset="1" stop-color="#C9CDD4"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="420" rx="28" fill="url(#deck)"/>
+  <circle cx="1115" cy="52" r="180" fill="#E4593F" opacity="0.06"/>
+  <circle cx="1140" cy="30" r="108" fill="none" stroke="#E4593F" stroke-width="2" opacity="0.22"/>
+  <circle cx="92" cy="388" r="150" fill="#7FA0B8" opacity="0.06"/>
+  <path d="M80 88 H432" stroke="#E4593F" stroke-width="3"/>
+  <path d="M80 328 H810" stroke="#3A414C" stroke-width="1"/>
+
+  <text x="80" y="72" fill="#E4593F" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="700" letter-spacing="3">PHASER FLIGHT DECK · V0.6.0</text>
+  <text x="80" y="192" fill="url(#chalk)" font-family="'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" font-size="72" font-weight="700" letter-spacing="2">Phaser Flight Deck</text>
+  <text x="84" y="250" fill="#9AA3AE" font-family="'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" font-size="27">先拿到事实，再谈判断</text>
+
+  <g font-family="'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" font-size="18" fill="#E8E6E2">
+    <rect x="80" y="284" width="126" height="42" rx="21" fill="#FFFFFF" opacity="0.07"/>
+    <text x="143" y="311" text-anchor="middle">玩测剧本</text>
+    <rect x="220" y="284" width="126" height="42" rx="21" fill="#FFFFFF" opacity="0.07"/>
+    <text x="283" y="311" text-anchor="middle">视觉回归</text>
+    <rect x="360" y="284" width="154" height="42" rx="21" fill="#FFFFFF" opacity="0.07"/>
+    <text x="437" y="311" text-anchor="middle">平衡模拟门</text>
+  </g>
+
+  <g transform="translate(928 120)">
+    <rect width="154" height="154" rx="30" fill="#E4593F" opacity="0.12"/>
+    <rect x="12" y="12" width="130" height="130" rx="22" fill="none" stroke="#E4593F" stroke-width="2" opacity="0.55"/>
+    <text x="77" y="103" text-anchor="middle" fill="#E4593F" font-family="'STKaiti', 'KaiTi', serif" font-size="76" font-weight="700">验</text>
+  </g>
+
+  <text x="1118" y="367" text-anchor="end" fill="#6E7682" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17" letter-spacing="1">EVIDENCE-FIRST TOOLCHAIN FOR PHASER 4</text>
+</svg>
