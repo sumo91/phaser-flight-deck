@@ -41,7 +41,41 @@ function taskkill(pid) {
   });
 }
 
-function pidsByPort(port) {
+// ss -ltnp 监听行解析（纯函数，可单元测试）：形如
+//   LISTEN 0 511 *:5173 *:* users:(("node",pid=1234,fd=20))
+export function parseSsListenPids(output, port) {
+  const pids = [];
+  for (const line of output.split('\n')) {
+    if (!line.includes('LISTEN')) continue;
+    const addr = line.match(/(?:\*|(?:\d{1,3}\.){3}\d{1,3}|\[[^\]]*\]):(\d+)\b/);
+    if (!addr || Number(addr[1]) !== Number(port)) continue;
+    const pid = line.match(/pid=(\d+)/);
+    if (pid) pids.push(Number(pid[1]));
+  }
+  return [...new Set(pids)];
+}
+
+// POSIX：macOS 无 ss、部分精简 Linux 无 lsof——lsof 优先（无则回退 ss）
+function pidsByPortPosix(port) {
+  const run = (cmd, args) => new Promise((resolveRun) => {
+    const child = spawn(cmd, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    let out = '';
+    child.stdout.on('data', (c) => { out += c; });
+    child.on('error', () => resolveRun(null)); // 命令不存在
+    child.on('close', () => resolveRun(out));
+  });
+  return new Promise(async (resolvePromise) => {
+    const lsof = await run('lsof', ['-t', '-i', `TCP:${port}`, '-s', 'TCP:LISTEN']);
+    if (lsof !== null) {
+      resolvePromise([...new Set(lsof.split('\n').map((l) => Number(l.trim())).filter((p) => Number.isFinite(p) && p > 0))]);
+      return;
+    }
+    const ss = await run('ss', ['-ltnp']);
+    resolvePromise(ss === null ? [] : parseSsListenPids(ss, port));
+  });
+}
+
+export async function pidsByPort(port) {
   // Windows：netstat -p TCP 只列 IPv4、不带 -p 只列 IPv6——两者合并才能覆盖 vite 双栈绑定
   // 实现刻意避免正则反斜杠转义（对任何传输层编码免疫）
   const CR = String.fromCharCode(13);
@@ -50,10 +84,14 @@ function pidsByPort(port) {
     const child = spawn('netstat', args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
     let out = '';
     child.stdout.on('data', (c) => { out += c; });
+    child.on('error', () => resolvePromise('')); // 工具缺失：按无监听处理，strictPort 兜底
     child.on('close', () => resolvePromise(out));
   });
   return new Promise(async (resolvePromise) => {
-    if (process.platform !== 'win32') return resolvePromise([]);
+    if (process.platform !== 'win32') {
+      resolvePromise(await pidsByPortPosix(port));
+      return;
+    }
     const [v4, v6] = await Promise.all([run(['-ano', '-p', 'TCP']), run(['-ano'])]);
     const lines = [...v4.replaceAll(CR, '').split(NL), ...v6.replaceAll(CR, '').split(NL)];
     const pids = lines
@@ -64,12 +102,21 @@ function pidsByPort(port) {
   });
 }
 
-function processCommandLine(pid) {
+export function processCommandLine(pid) {
   return new Promise((resolvePromise) => {
-    if (process.platform !== 'win32') return resolvePromise('');
-    const child = spawn('wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'CommandLine'], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    if (process.platform === 'win32') {
+      const child = spawn('wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'CommandLine'], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      let out = '';
+      child.stdout.on('data', (c) => { out += c; });
+      child.on('error', () => resolvePromise('')); // 新版 Windows 移除 wmic 时按未知归属处理（不误杀）
+      child.on('close', () => resolvePromise(out.trim()));
+      return;
+    }
+    // POSIX：ps 给完整命令行（归属校验与 Windows 同一逻辑：命令行引用项目路径才算自己的）
+    const child = spawn('ps', ['-p', String(pid), '-o', 'command='], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
     let out = '';
     child.stdout.on('data', (c) => { out += c; });
+    child.on('error', () => resolvePromise(''));
     child.on('close', () => resolvePromise(out.trim()));
   });
 }

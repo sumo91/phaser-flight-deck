@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.2 — 阶段 C：正确性收尾（2026-08-16）
+
+- **#7 POSIX 端口预检落地**：`pidsByPort` 非 win32 不再返回空——lsof 优先（macOS）、
+  ss 回退（精简 Linux），`ss -ltnp` 解析抽为纯函数 `parseSsListenPids`（可单元测试）；
+  `processCommandLine` 用 `ps -o command=` 替代直接返回空串（归属校验/防误杀在
+  POSIX 上真正生效）。README 宣称与实现不再不符。wmic/netstat 分支补 spawn 失败
+  兜底（新版 Windows 移除 wmic 时按未知归属处理，不误杀）。
+- **#11 fx-bloom/fx-shine 双序匹配**：`setPostPipeline('Bloom')` 参数在后的迁移指南
+  常见写法不再漏报（此前只认 Bloom 在前）；保持原"同行任意字符"语义。
+- **#10 静态服务器路径穿越加固**：解码后路径（%2e%2e 编码可绕过客户端规范化）
+  解析后必须仍在 root 内，否则 404——带外文件不得泄露（只监听 127.0.0.1，
+  风险本就低，此为纵深防御）。
+- **版本单一来源**：pdeck.mjs 的 VERSION 改读 package.json（此前双维护、
+  每轮发版手动同步两处）。
+- 新增 4 项测试：fx 双序、ss 解析（端口全等/仅 LISTEN/去重）、路径穿越拒绝
+  （%2e%2e 两种编码形态 + 正常路径不受影响）、平台分支可执行（本地 win32、
+  CI ubuntu 实跑 POSIX 路径）。
+
+测试总数 67（61 CLI + 6 适配器）；三配置全绿（56+11skip / 67/67 ×2）。
+
 ## 0.5.1 — 阶段 A：测试守护的真实性（2026-08-16）
 
 - **#14 适配器测试守护已提交状态**：`npm test` 不再先跑 generate（原流程守护的是

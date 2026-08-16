@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import { CLI_COMMANDS, CLI_OPTIONS } from '../registry/commands.mjs';
 import { failureEnvelope, renderEnvelope } from './result-envelope.mjs';
 
-const VERSION = '0.5.1';
+// 版本单一来源：package.json（此前与 pdeck.mjs 硬编码双维护，每轮发版手动同步两处）
+const VERSION = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')).version;
 
 function parseArgv(argv) {
   const tokens = [...argv];

@@ -1,19 +1,19 @@
 {
-  "version": "0.5.1",
+  "version": "0.5.2",
   "files": {
-    "claude-code/skills/phaser-flight-deck/SKILL.md": "c95497b47e5eca4ad6c1979acc31e5768dcda3011ea728001e3af34e59d253bf",
+    "claude-code/skills/phaser-flight-deck/SKILL.md": "9cb40c2e40a4f705446a129bbc773d4123203687083a99bbdce7fd06e49011d3",
     "claude-code/commands/pdeck-regression.md": "b2693ad1d69044a40715bde2539e50ee65a66ff5350b8dce1264e437c4189e57",
     "claude-code/commands/pdeck-verify.md": "d6b04e100b70722fa5c964e46145b5d6d3d115cb4d75f70cc361f83f5963a319",
     "claude-code/commands/pdeck-doctor.md": "e9740e28a6db60f97ccc7d5907a92fd30f205de2ed26c02b06b0f9a4588371ea",
     "claude-code/commands/pdeck-check.md": "232e93332cc5eeacfd25c29d8a67db158b533923931fc3d37945b4e398286aa8",
-    "cursor/skills/phaser-flight-deck/SKILL.md": "4f9711c6bdbae8406c1abd86c4c519dc53d16c133fd3148085dc788343a85cdf",
+    "cursor/skills/phaser-flight-deck/SKILL.md": "e7a25c786a09c2c29f05e08ba6eb3c3dd55fe0cf3e7dfdbad5904c8ab7e3a8d1",
     "cursor/commands/pdeck-regression.md": "d0fa787804bb570ff08490d28a35b5b66db31a7293ba6334563c3236be57ac7e",
     "cursor/commands/pdeck-verify.md": "e703318fda641a0728f45af5c00b212cc9f0ce2c0f5b31695e86f7b9c53c4fbb",
     "cursor/commands/pdeck-doctor.md": "f317768402813680f867e23308a0256c27ab269d8dd465cba7866e678d1630ec",
     "cursor/commands/pdeck-check.md": "1c7d44b5525e011b9efdd75106d451d6515b4ee53af8e59068e42682b1450768",
-    "codex/skills/phaser-flight-deck/SKILL.md": "d555df22b1d7e0aea2eb60ef42e96f401f7c6929b1fe4097d143919d35670208",
+    "codex/skills/phaser-flight-deck/SKILL.md": "6caef6770e7999f7c1cd5dc8add88236149eae47912401f546f9a5b7cdd9e2be",
     "claude-code/hooks/pdeck-confirm.mjs": "7328130d3ce7bc5306099e873dbcc1a4efe619aec344ee9201f97fed5aea4c57",
     "claude-code/hooks/settings.json.example": "3ea6df01c9020ba43b9ab440e5916f208016d75feffdd2ad3308cc82fb59e3f3",
-    "README.md": "7c05b8935414d659107bd5d6653e04cc44d831e75030dbdcf68b1fd1598dc701"
+    "README.md": "733c928492bbfeaeba50f7f60612a2a23463e880f31074f76b1eeb98d6e7c171"
   }
 }

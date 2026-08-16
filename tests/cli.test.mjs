@@ -11,6 +11,7 @@ import { envelope, renderEnvelope, boundedText, failureEnvelope } from '../cli/r
 import { scanSource, textureKeyFindings, V4_RULES } from '../cli/lib/rules-v4.mjs';
 import { splitErrors, splitWarnings } from '../cli/lib/console-filter.mjs';
 import { countChangedPixels } from '../cli/lib/visual-diff.mjs';
+import { parseSsListenPids, pidsByPort, processCommandLine } from '../cli/commands/run.mjs';
 import { pruneEvidenceFiles } from '../cli/commands/verify.mjs';
 import { detectProject } from '../cli/lib/phaser-project.mjs';
 import { quietPeriodDays } from '../cli/lib/registry-lookup.mjs';
@@ -323,6 +324,68 @@ test('countChangedPixels: 长度不一致按短侧安全截断', () => {
   const r = countChangedPixels(a, b, 16);
   assert.equal(r.total, 1);
   assert.equal(r.changed, 1);
+});
+
+test('scanSource: fx-bloom/fx-shine 双序匹配（参数在后的常见写法不漏报）', () => {
+  const src = [
+    "sprite.setPostPipeline('Bloom');",
+    'const b = new Bloom(); sprite.postFX.add(b);',
+    'Bloom effect via setPostPipeline;',
+    "sprite.setPostPipeline('Shine');",
+    'const x = 1;', // 无关行不报
+  ].join('\n');
+  const findings = scanSource('fx.ts', src);
+  const bloomCount = findings.filter((f) => f.rule === 'fx-bloom').length;
+  const shineCount = findings.filter((f) => f.rule === 'fx-shine').length;
+  assert.ok(bloomCount >= 3, `fx-bloom 应命中 3 处（实际 ${bloomCount}）`);
+  assert.ok(shineCount >= 1);
+  assert.ok(!findings.some((f) => f.line === 5), '无关行不报');
+});
+
+test('parseSsListenPids: 端口匹配/pid 提取/去重（POSIX 端口预检的纯解析层）', () => {
+  const output = [
+    'State  Recv-Q Send-Q Local Address:Port  Peer Address:Port Process',
+    'LISTEN 0      511    *:5173             *:*                users:(("node",pid=1234,fd=20))',
+    'LISTEN 0      511    127.0.0.1:5173     0.0.0.0:*          users:(("node",pid=1234,fd=21))',
+    'LISTEN 0      511    [::]:5173          [::]:*             users:(("node",pid=5678,fd=20))',
+    'LISTEN 0      511    *:51731            *:*                users:(("other",pid=9999,fd=20))',
+    'ESTAB  0      0      1.2.3.4:5173        5.6.7.8:443        users:(("x",pid=7777,fd=20))',
+  ].join('\n');
+  assert.deepEqual(parseSsListenPids(output, '5173'), [1234, 5678]); // 端口全等、仅 LISTEN、去重
+  assert.deepEqual(parseSsListenPids(output, '51731'), [9999]);
+  assert.deepEqual(parseSsListenPids(output, '9999'), []);
+});
+
+test('static-server: 路径穿越被拒（%2e%2e 编码绕过客户端规范化）', { timeout: 60000 }, async () => {
+  const { startStaticServer, stopStaticServer } = await import('../cli/lib/static-server.mjs');
+  const outer = mkdtempSync(join(tmpdir(), 'pdeck-trav-'));
+  const root = join(outer, 'root');
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(root, 'index.html'), '<html>ok</html>');
+  writeFileSync(join(outer, 'secret.txt'), 'TOPSECRET');
+  const server = await startStaticServer(root);
+  try {
+    for (const path of ['/%2e%2e/secret.txt', '/%2e%2e%2f%2e%2e%2fsecret.txt']) {
+      const res = await fetch(server.url.replace(/\/$/, '') + path);
+      assert.equal(res.status, 404, `${path} 应 404`);
+      assert.ok(!(await res.text()).includes('TOPSECRET'), 'root 外文件不得泄露');
+    }
+    const ok = await fetch(server.url);
+    assert.equal(ok.status, 200); // 正常路径不受影响
+  } finally {
+    await stopStaticServer(server.server);
+    rmSync(outer, { recursive: true, force: true });
+  }
+});
+
+test('pidsByPort/processCommandLine: 平台分支可执行（win32=netstat/wmic，POSIX=lsof→ss/ps）', { timeout: 30000 }, async () => {
+  // 无人监听的高端口：win32 走 netstat 双栈合并、POSIX 走 lsof→ss 回退——本测试在
+  // CI 的 ubuntu runner 上会真实执行 POSIX 分支（本地 Windows 执行 win32 分支）
+  const pids = await pidsByPort(59997);
+  assert.ok(Array.isArray(pids));
+  assert.ok(pids.every((p) => Number.isInteger(p) && p > 0));
+  const cmd = await processCommandLine(process.pid);
+  assert.ok(cmd.length > 0, '应能读到自身进程命令行');
 });
 
 // ===== 真实项目集成（夹具）=====

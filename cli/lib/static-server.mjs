@@ -1,7 +1,7 @@
 // ===== 零依赖静态服务器（verify 用，服务 dist/ 等构建产物）=====
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { join, extname } from 'node:path';
+import { join, extname, resolve, sep } from 'node:path';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -24,9 +24,16 @@ export function startStaticServer(root, port = 0) {
     const server = createServer(async (req, res) => {
       try {
         const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
-        let filePath = join(root, urlPath === '/' ? 'index.html' : urlPath);
+        const rootDir = resolve(root);
+        let filePath = join(rootDir, urlPath === '/' ? 'index.html' : urlPath);
+        // 边界校验：解码后的 %2e%2e（..）可绕过客户端路径规范化逃出 root——解析后必须仍在 root 内
+        if (filePath !== rootDir && !filePath.startsWith(rootDir + sep)) {
+          res.writeHead(404, { 'content-type': 'text/plain' });
+          res.end('not found');
+          return;
+        }
         // SPA 兜底：无扩展名的路径 → index.html
-        if (!extname(filePath)) filePath = join(root, 'index.html');
+        if (!extname(filePath)) filePath = join(rootDir, 'index.html');
         const info = await stat(filePath);
         if (info.isDirectory()) filePath = join(filePath, 'index.html');
         const body = await readFile(filePath);

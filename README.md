@@ -1,6 +1,6 @@
 # Phaser Flight Deck
 
-> **v0.5.1** · 63 tests · MIT License · Node ≥ 20
+> **v0.5.2** · 67 tests · MIT License · Node ≥ 20
 
 Agent toolchain for **Phaser 4 web games**: project health checks, v4 API static scanning,
 an API-truth oracle over the bundled type definitions, a narrow-to-broad verification ladder,
@@ -35,7 +35,7 @@ PASSED/FAILED/INCONCLUSIVE/CANCELLED verdict, evidence facts, and deterministic 
 | git | 可选 | 仅 `vendor-skills` 需要 |
 | tsx（项目内） | 可选 | 项目的 `.ts` 模拟 harness 需要 |
 
-支持平台：Windows / macOS / Linux（Windows 的端口与进程管理有专门实现，其余平台有通用回退）。
+支持平台：Windows / macOS / Linux（端口预检与进程归属校验跨平台：Windows 用 netstat 双栈 + wmic，POSIX 用 lsof→ss + ps）。
 
 ## Installation（三选一）
 
@@ -185,9 +185,9 @@ JSON 剧本驱动机器人玩家在**真实 UI** 上玩，并可直接注入设�
 ## 测试
 
 ```bash
-npm test                                          # 63 项 = 57 CLI 回归 + 6 适配器一致性（校验已提交的 dist）
+npm test                                          # 67 项 = 61 CLI 回归 + 6 适配器一致性（校验已提交的 dist）
 PDECK_TEST_FIXTURE=<Phaser项目路径> npm test      # 附带真实项目集成（verify 阶梯、serve 生命周期、视觉自比对、模拟门、玩测）
-# 未设置夹具时集成测试自动跳过（52 通过 / 11 跳过）
+# 未设置夹具时集成测试自动跳过（56 通过 / 11 跳过）
 ```
 
 ## 目录
@@ -202,7 +202,7 @@ extensions/              Pi 薄封装扩展（参数映射+确认门+Envelope �
 skills/                  自研主技能 + 官方技能 vendor
 probes/                  运行时探针契约（window.__pdeck，pdeck run probe 消费）
 templates/project/       init 脚手架模板（Phaser 4.2.1 钉版）
-tests/                   node --test 回归（63 项：cli.test + adapters.test）
+tests/                   node --test 回归（67 项：cli.test + adapters.test）
 scripts/                 generate-adapters.mjs（多宿主适配器生成器，零依赖；--out 可指定输出目录）
 dist/                    生成的宿主适配器包（已提交，安装方式见 dist/README.md；测试守护其与契约源新鲜一致）
 .github/workflows/       CI：ubuntu/windows × Node 20/24 矩阵跑 npm test

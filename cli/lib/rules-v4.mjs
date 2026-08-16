@@ -47,14 +47,17 @@ export const V4_RULES = Object.freeze([
     /Phaser\.Display\.Masks\.BitmapMask\b/,
     '用 Mask filter：sprite.filters.internal.addMask(maskObject)',
     'official-migration-guide'),
+  // FX 规则双序匹配：Bloom/Shine 无论出现在 setPostPipeline/postFX 之前还是之后都命中
+  //（`sprite.setPostPipeline('Bloom')` 是迁移指南里的常见写法，单向匹配会漏报；
+  //  同原规则语义：同行任意字符、不跨行）
   RULE('fx-bloom', 'error', '4.0.0',
     'FX Bloom 已移除',
-    /\bBloom\b.*?(?:setPostPipeline|FX)/,
+    /\bBloom\b.*(?:setPostPipeline|postFX|\bFX\b)|(?:setPostPipeline|postFX|\bFX\b).*\bBloom\b/,
     'Phaser.Actions.AddEffectBloom()',
     'official-migration-guide'),
   RULE('fx-shine', 'error', '4.0.0',
     'FX Shine 已移除',
-    /\bShine\b.*?(?:setPostPipeline|FX)/,
+    /\bShine\b.*(?:setPostPipeline|postFX|\bFX\b)|(?:setPostPipeline|postFX|\bFX\b).*\bShine\b/,
     'Phaser.Actions.AddEffectShine()',
     'official-migration-guide'),
   RULE('pipeline-light2d', 'error', '4.0.0',
