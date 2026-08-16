@@ -70,32 +70,22 @@ function commandsTable() {
 }
 
 // ===== SKILL.md 生成（源技能 + 注入宿主段）=====
-function hostNote(host) {
-  if (host === 'claude-code') {
-    return `## 宿主接入：Claude Code
+// 三宿主共用同一份宿主无关技能文档：唯一安装源放 ~/.agents/skills，
+// 其它宿主目录用链接（Windows junction / POSIX symlink）指向它，升级只重拷一处。
+const HOST_NOTE = `## 宿主接入
 
-- 技能路径：\`~/.claude/skills/phaser-flight-deck/\` 或项目 \`.claude/skills/\`
-- 快捷命令：\`/pdeck-regression\` · \`/pdeck-verify\` · \`/pdeck-doctor\` · \`/pdeck-check\`（见 commands/）
-- **确认门**：本包 hooks/pre_tool_use 示例拦截写入类命令（init --apply / vendor-skills / baseline / simulate-profile），
-  首次使用前把 settings.json 示例合入 \`~/.claude/settings.json\`；
-  未装 hooks 时，写入类命令执行前必须先向用户说明并获同意`;
-  }
-  if (host === 'cursor') {
-    return `## 宿主接入：Cursor
+同一份技能可装进任何宿主。推荐把唯一安装源放 \`$HOME/.agents/skills/phaser-flight-deck/\`，其它宿主的技能目录用链接指向它（Windows 用 junction，macOS/Linux 用 symlink），升级本工具后只需重拷这一处。
 
-- 命令文件：复制 dist/cursor/commands/ 到项目 \`.cursor/commands/\`（或全局）
-- **确认门**：Cursor 无 hooks——写入类命令（init --apply / vendor-skills / baseline / simulate-profile）
-  执行前必须先向用户说明并获同意（prompt 约定）`;
-  }
-  return `## 宿主接入：Codex
+| 宿主 | 入口 | 确认门 |
+|---|---|---|
+| Claude Code | \`~/.claude/skills/phaser-flight-deck/\`（链接到唯一源）+ \`/pdeck-*\` 快捷命令（commands/） | PreToolUse hooks 拦截写入类命令（init --apply / vendor-skills / baseline / simulate-profile）；settings.json.example 合入 \`~/.claude/settings.json\` |
+| Cursor | \`.cursor/commands/\` 命令入口 + \`.cursor/skills/\`（链接到唯一源） | 无 hooks，prompt 约定——写入类命令执行前必须先向用户说明并获同意 |
+| Codex | \`$HOME/.agents/skills/phaser-flight-deck/\`（即唯一源本身） | prompt 约定——写入类命令执行前必须先向用户说明并获同意 |
+| Pi | \`pi install <仓库>\` | 工具内三选一授权（trust.json） |`;
 
-- 技能路径：\`$HOME/.agents/skills/phaser-flight-deck/\`
-- **确认门**：prompt 约定——写入类命令执行前必须先向用户说明并获同意`;
-}
-
-function generateSkill(host) {
+function generateSkill() {
   const source = readFileSync(SOURCE_SKILL, 'utf8');
-  // 在 frontmatter 后注入 pdeck 调用方式 + 命令表 + 宿主接入
+  // 在 frontmatter 后注入 pdeck 调用方式 + 命令表 + 宿主接入总表
   const version = readVersion();
   const injection = `
 
@@ -111,7 +101,7 @@ ${FENCE}
 
 ${commandsTable()}
 
-${hostNote(host)}
+${HOST_NOTE}
 
 _本文件由 scripts/generate-adapters.mjs 自动生成（v${version}），勿手改；源文件 skills/phaser4-flight-deck/SKILL.md。_
 `;
@@ -210,8 +200,9 @@ function generate() {
   };
 
   const hosts = ['claude-code', 'cursor', 'codex'];
+  const unifiedSkill = generateSkill();
   for (const host of hosts) {
-    emit(`${host}/skills/phaser-flight-deck/SKILL.md`, generateSkill(host));
+    emit(`${host}/skills/phaser-flight-deck/SKILL.md`, unifiedSkill);
     if (host !== 'codex') {
       for (const entry of WORKFLOW_COMMANDS) {
         emit(`${host}/commands/${entry.id}.md`, generateCommandFile(entry, host));
@@ -231,9 +222,9 @@ function generate() {
 
 | 宿主 | 安装 |
 |---|---|
-| Claude Code | 复制 \`claude-code/skills/phaser-flight-deck\` 到 \`~/.claude/skills/\`；commands 到 \`~/.claude/commands/\`；hooks 按 settings.json.example 合入 |
-| Cursor | 复制 \`cursor/commands/\` 到项目 \`.cursor/commands/\`；技能放 \`.cursor/skills/\` 或直接引用 |
-| Codex | 复制 \`codex/skills/phaser-flight-deck\` 到 \`$HOME/.agents/skills/\` |
+| Claude Code | 复制 \`claude-code/skills/phaser-flight-deck\` 到 \`~/.claude/skills/\`；commands 到 \`~/.claude/commands/\`；hooks 按 settings.json.example 合入。Windows 推荐把技能目录做成指向 \`~/.agents/skills/phaser-flight-deck\` 的 junction |
+| Cursor | 复制 \`cursor/commands/\` 到项目 \`.cursor/commands/\`；技能目录 \`.cursor/skills/\` 同样建议链接到唯一源 |
+| Codex | 复制 \`codex/skills/phaser-flight-deck\` 到 \`$HOME/.agents/skills/\`（唯一安装源即此处） |
 `;
   emit('README.md', installNote);
 

@@ -61,14 +61,24 @@ pi install <本目录>                            # 全局；或 cd <项目> && 
 
 手工注册则在 settings.json 的 extensions 数组加入 `<本目录>/extensions/phaser-flight-deck.ts`，skills 数组加入 `<本目录>/skills/phaser4-flight-deck`。装完 `/reload`，会话拿到 11 个工具和 3 个命令。
 
-**D. 跨工具技能（~/.agents/skills）**
+**D. 跨工具技能（~/.agents/skills，推荐做唯一安装源）**
 
 ```bash
 mkdir -p ~/.agents/skills/phaser-flight-deck
-cp <本目录>/skills/phaser4-flight-deck/SKILL.md ~/.agents/skills/phaser-flight-deck/
+cp <本目录>/dist/claude-code/skills/phaser-flight-deck/SKILL.md ~/.agents/skills/phaser-flight-deck/
 ```
 
-技能分三处。`skills/phaser4-flight-deck/` 是源，改这里；`~/.agents/skills/phaser-flight-deck/` 是给扫约定目录的 CLI 用的安装位，升级本工具后重拷一次；`dist/` 里 Claude Code、Cursor、Codex 的技能包由 `npm run generate` 再生成。源和安装位并存时加载器会报同名冲突并取其一，内容一致就无害，想消掉提示删掉其中一处注册即可。
+三宿主的适配器技能是同一份宿主无关文档。Windows 上推荐把唯一源放 `~/.agents/skills/phaser-flight-deck/`，其它宿主的技能目录用 junction 链过去，升级本工具后只需重拷这一处（macOS/Linux 换 symlink）。
+
+```powershell
+# PowerShell：Claude Code / Cursor 的技能目录指向唯一源
+Remove-Item -Recurse $env:USERPROFILE\.claude\skills\phaser-flight-deck
+New-Item -ItemType Junction -Path $env:USERPROFILE\.claude\skills\phaser-flight-deck -Target $env:USERPROFILE\.agents\skills\phaser-flight-deck
+Remove-Item -Recurse $env:USERPROFILE\.cursor\skills\phaser-flight-deck-cursor
+New-Item -ItemType Junction -Path $env:USERPROFILE\.cursor\skills\phaser-flight-deck-cursor -Target $env:USERPROFILE\.agents\skills\phaser-flight-deck
+```
+
+技能分三处。`skills/phaser4-flight-deck/` 是源，改这里；`~/.agents/skills/phaser-flight-deck/` 是唯一安装源，Codex 直接读这里，其它宿主链接过来；`dist/` 里各宿主包由 `npm run generate` 再生成。全局 `pdeck` 走 npm link 的话始终跟随仓库，不用单独升级。
 
 平台支持 Windows / macOS / Linux。端口预检和进程归属校验两边都做了，Windows 走 netstat 双栈加 wmic，POSIX 走 lsof、ss 加 ps。
 

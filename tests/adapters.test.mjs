@@ -41,10 +41,12 @@ test('adapters: 每个 CLI 命令都在技能文档的命令表中被提及（�
   }
 });
 
-test('adapters: 技能文档含宿主接入与确认门说明', () => {
+test('adapters: 技能文档含宿主接入与确认门说明（三宿主同一份，支撑唯一源+链接安装）', () => {
   const claude = readFileSync(join(DIST, 'claude-code', 'skills', 'phaser-flight-deck', 'SKILL.md'), 'utf8');
   const cursor = readFileSync(join(DIST, 'cursor', 'skills', 'phaser-flight-deck', 'SKILL.md'), 'utf8');
   const codex = readFileSync(join(DIST, 'codex', 'skills', 'phaser-flight-deck', 'SKILL.md'), 'utf8');
+  assert.equal(claude, cursor, 'claude 与 cursor 技能应完全一致（宿主无关）');
+  assert.equal(claude, codex, 'claude 与 codex 技能应完全一致（宿主无关）');
   assert.match(claude, /PreToolUse|hooks/);
   assert.match(cursor, /无 hooks|prompt 约定/);
   assert.match(codex, /\$HOME\/.agents\/skills/);

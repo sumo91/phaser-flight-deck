@@ -34,10 +34,16 @@ node <phaser-flight-deck目录>/cli/pdeck.mjs <command> [args] --json   # 兑底
 | `pdeck evidence` | Inspect bounded verification evidence freshness (read-only) |
 | `pdeck vendor-skills` | Vendor official Phaser skills from the phaserjs/phaser repo at a pinned tag (host-write) |
 
-## 宿主接入：Codex
+## 宿主接入
 
-- 技能路径：`$HOME/.agents/skills/phaser-flight-deck/`
-- **确认门**：prompt 约定——写入类命令执行前必须先向用户说明并获同意
+同一份技能可装进任何宿主。推荐把唯一安装源放 `$HOME/.agents/skills/phaser-flight-deck/`，其它宿主的技能目录用链接指向它（Windows 用 junction，macOS/Linux 用 symlink），升级本工具后只需重拷这一处。
+
+| 宿主 | 入口 | 确认门 |
+|---|---|---|
+| Claude Code | `~/.claude/skills/phaser-flight-deck/`（链接到唯一源）+ `/pdeck-*` 快捷命令（commands/） | PreToolUse hooks 拦截写入类命令（init --apply / vendor-skills / baseline / simulate-profile）；settings.json.example 合入 `~/.claude/settings.json` |
+| Cursor | `.cursor/commands/` 命令入口 + `.cursor/skills/`（链接到唯一源） | 无 hooks，prompt 约定——写入类命令执行前必须先向用户说明并获同意 |
+| Codex | `$HOME/.agents/skills/phaser-flight-deck/`（即唯一源本身） | prompt 约定——写入类命令执行前必须先向用户说明并获同意 |
+| Pi | `pi install <仓库>` | 工具内三选一授权（trust.json） |
 
 _本文件由 scripts/generate-adapters.mjs 自动生成（v0.6.0），勿手改；源文件 skills/phaser4-flight-deck/SKILL.md。_
 
