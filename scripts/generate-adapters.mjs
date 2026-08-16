@@ -9,12 +9,14 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CLI_COMMANDS } from '../registry/commands.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const DIST = join(ROOT, 'dist');
+// --out <dir>：生成到指定目录（一致性测试用它生成临时副本与已提交的 dist 比对）
+const outFlag = process.argv.indexOf('--out');
+const DIST = outFlag >= 0 ? resolve(process.argv[outFlag + 1]) : join(ROOT, 'dist');
 const SOURCE_SKILL = join(ROOT, 'skills', 'phaser4-flight-deck', 'SKILL.md');
 const FENCE = ['`', '`', '`'].join(''); // 代码围栏，拼接法避免模板字符串转义地狱
 
@@ -235,7 +237,8 @@ function generate() {
 `;
   emit('README.md', installNote);
 
-  emit('MANIFEST.json', JSON.stringify({ generatedAt: new Date().toISOString(), version, files: manifest }, null, 2));
+  // 不含时间戳：产物完全确定性——源未变则重新生成零 diff（否则每次 npm run generate 都弄脏工作区）
+  emit('MANIFEST.json', JSON.stringify({ version, files: manifest }, null, 2));
   console.log(`已生成 ${Object.keys(manifest).length} 个适配器文件（v${version}）`);
 }
 

@@ -2,6 +2,21 @@
 import { readFileSync } from 'node:fs';
 import { launchHeadless } from './browser.mjs';
 
+// 纯比对逻辑（无浏览器依赖，可单元测试）：任一通道差值 > threshold 计为差异像素。
+// 浏览器路径通过 toString() 序列化本函数在页面内执行——一份实现两处用。
+export function countChangedPixels(dataA, dataB, threshold = 16) {
+  const pixels = Math.floor(Math.min(dataA.length, dataB.length) / 4);
+  let changed = 0;
+  for (let i = 0; i < pixels * 4; i += 4) {
+    if (
+      Math.abs(dataA[i] - dataB[i]) > threshold
+      || Math.abs(dataA[i + 1] - dataB[i + 1]) > threshold
+      || Math.abs(dataA[i + 2] - dataB[i + 2]) > threshold
+    ) changed++;
+  }
+  return { changed, total: pixels, ratio: pixels ? changed / pixels : 0 };
+}
+
 export async function pixelDiff(baselinePath, currentPath, options = {}) {
   const threshold = options.threshold ?? 16;
   const viewport = options.viewport ?? { width: 1280, height: 800 };
@@ -19,7 +34,7 @@ export async function pixelDiff(baselinePath, currentPath, options = {}) {
     const page = await launched.browser.newPage({ viewport });
     try {
       await page.setContent('<html><body style="margin:0"></body></html>');
-      const result = await page.evaluate(async ({ b64a, b64b, threshold }) => {
+      const result = await page.evaluate(async ({ b64a, b64b, threshold, compareSrc }) => {
         const load = (b64) => new Promise((resolvePromise, rejectPromise) => {
           const img = new Image();
           img.onload = () => resolvePromise(img);
@@ -39,17 +54,9 @@ export async function pixelDiff(baselinePath, currentPath, options = {}) {
           ctx.drawImage(img, 0, 0);
           return ctx.getImageData(0, 0, w, h).data;
         };
-        const dataA = make(imgA);
-        const dataB = make(imgB);
-        let changed = 0;
-        for (let i = 0; i < dataA.length; i += 4) {
-          const dr = Math.abs(dataA[i] - dataB[i]);
-          const dg = Math.abs(dataA[i + 1] - dataB[i + 1]);
-          const db = Math.abs(dataA[i + 2] - dataB[i + 2]);
-          if (dr > threshold || dg > threshold || db > threshold) changed++;
-        }
-        return { mismatch: false, width: w, height: h, changed, total: w * h, ratio: changed / (w * h) };
-      }, { b64a, b64b, threshold });
+        const compare = new Function('return (' + compareSrc + ')')();
+        return { mismatch: false, width: w, height: h, ...compare(make(imgA), make(imgB), threshold) };
+      }, { b64a, b64b, threshold, compareSrc: countChangedPixels.toString() });
       return { ok: true, ...result };
     } finally {
       await page.close().catch(() => {});

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { envelope, renderEnvelope, boundedText, failureEnvelope } from '../cli/result-envelope.mjs';
 import { scanSource, textureKeyFindings, V4_RULES } from '../cli/lib/rules-v4.mjs';
 import { splitErrors, splitWarnings } from '../cli/lib/console-filter.mjs';
+import { countChangedPixels } from '../cli/lib/visual-diff.mjs';
 import { pruneEvidenceFiles } from '../cli/commands/verify.mjs';
 import { detectProject } from '../cli/lib/phaser-project.mjs';
 import { quietPeriodDays } from '../cli/lib/registry-lookup.mjs';
@@ -295,6 +296,33 @@ test('集成: playtest 真实 Phaser 项目（项目无关冒烟剧本）', { sk
   const out = pdeck(['run', 'playtest', scriptPath, FIXTURE], FIXTURE, 300000);
   assert.match(out, /verdict: PASSED/);
   assert.match(out, /expect_ok/);
+});
+
+// ===== 视觉比对纯逻辑（无浏览器，CI 可跑——浏览器路径经 toString 复用同一实现）=====
+test('countChangedPixels: 完全相同 → 零差异', () => {
+  const pixels = Uint8ClampedArray.from([10, 20, 30, 255, 200, 100, 50, 255]);
+  const r = countChangedPixels(pixels, pixels, 16);
+  assert.equal(r.changed, 0);
+  assert.equal(r.total, 2);
+  assert.equal(r.ratio, 0);
+});
+
+test('countChangedPixels: 通道差值超阈值计差异、恰等于阈值不计（> 语义）', () => {
+  const a = Uint8ClampedArray.from([10, 10, 10, 255, 10, 10, 10, 255, 10, 10, 10, 255]);
+  const b = Uint8ClampedArray.from([27, 10, 10, 255, 26, 10, 10, 255, 10, 10, 10, 255]);
+  // 像素0: R 差 17 > 16 → 差异；像素1: R 差 16 == 16 → 不计；像素2: 相同
+  const r = countChangedPixels(a, b, 16);
+  assert.equal(r.changed, 1);
+  assert.equal(r.total, 3);
+  assert.ok(Math.abs(r.ratio - 1 / 3) < 1e-12);
+});
+
+test('countChangedPixels: 长度不一致按短侧安全截断', () => {
+  const a = Uint8ClampedArray.from([0, 0, 0, 255, 255, 255, 255, 255]);
+  const b = Uint8ClampedArray.from([200, 0, 0, 255]);
+  const r = countChangedPixels(a, b, 16);
+  assert.equal(r.total, 1);
+  assert.equal(r.changed, 1);
 });
 
 // ===== 真实项目集成（夹具）=====

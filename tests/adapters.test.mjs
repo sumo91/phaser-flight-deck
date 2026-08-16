@@ -1,11 +1,14 @@
 // ===== 适配器一致性测试 =====
-// 校验生成的 dist/ 与单一契约源（registry/commands.mjs）一致：
-// 每个 CLI 命令在技能文档中被提及、每宿主包结构完整、MANIFEST 哈希真实。
+// 校验**已提交**的 dist/ 与单一契约源（registry/commands.mjs + 主技能）一致：
+// npm test 不再先跑 generate——本文件守护的是仓库里的 dist 是否新鲜且自洽，
+// 改了 registry/技能却忘了 npm run generate + 提交，在这里失败。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { CLI_COMMANDS } from '../registry/commands.mjs';
 
@@ -54,6 +57,34 @@ test('adapters: MANIFEST 哈希与文件实际内容一致', () => {
   for (const [rel, expected] of entries) {
     const actual = sha256(readFileSync(join(DIST, rel), 'utf8'));
     assert.equal(actual, expected, `哈希一致: ${rel}`);
+  }
+});
+
+test('adapters: 已提交的 dist 与契约源新鲜一致（改 registry/技能后须重新生成提交）', () => {
+  // 生成到临时目录，与已提交的 dist 逐文件比对——捕获"改了源忘提交 dist"的漂移
+  const fresh = mkdtempSync(join(tmpdir(), 'pdeck-dist-'));
+  try {
+    execFileSync(process.execPath, [join(ROOT, 'scripts', 'generate-adapters.mjs'), '--out', fresh], { timeout: 60000 });
+    const listFiles = (dir, base = dir, acc = []) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) listFiles(full, base, acc);
+        else acc.push(full.slice(base.length + 1));
+      }
+      return acc.sort();
+    };
+    const committed = listFiles(DIST);
+    const generated = listFiles(fresh);
+    assert.deepEqual(committed, generated, '文件清单一致（多余/缺失文件 = dist 过期）');
+    for (const rel of generated) {
+      assert.equal(
+        readFileSync(join(DIST, rel), 'utf8'),
+        readFileSync(join(fresh, rel), 'utf8'),
+        `dist/${rel} 与契约源再生成结果不一致——运行 npm run generate 并提交`,
+      );
+    }
+  } finally {
+    rmSync(fresh, { recursive: true, force: true });
   }
 });
 

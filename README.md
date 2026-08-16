@@ -1,6 +1,6 @@
 # Phaser Flight Deck
 
-> **v0.5.0** · 59 tests · MIT License · Node ≥ 20
+> **v0.5.1** · 63 tests · MIT License · Node ≥ 20
 
 Agent toolchain for **Phaser 4 web games**: project health checks, v4 API static scanning,
 an API-truth oracle over the bundled type definitions, a narrow-to-broad verification ladder,
@@ -185,9 +185,9 @@ JSON 剧本驱动机器人玩家在**真实 UI** 上玩，并可直接注入设�
 ## 测试
 
 ```bash
-npm test                                          # 59 项 = 54 CLI 回归 + 5 适配器一致性
+npm test                                          # 63 项 = 57 CLI 回归 + 6 适配器一致性（校验已提交的 dist）
 PDECK_TEST_FIXTURE=<Phaser项目路径> npm test      # 附带真实项目集成（verify 阶梯、serve 生命周期、视觉自比对、模拟门、玩测）
-# 未设置夹具时集成测试自动跳过（48 通过 / 11 跳过）
+# 未设置夹具时集成测试自动跳过（52 通过 / 11 跳过）
 ```
 
 ## 目录
@@ -202,10 +202,10 @@ extensions/              Pi 薄封装扩展（参数映射+确认门+Envelope �
 skills/                  自研主技能 + 官方技能 vendor
 probes/                  运行时探针契约（window.__pdeck，pdeck run probe 消费）
 templates/project/       init 脚手架模板（Phaser 4.2.1 钉版）
-tests/                   node --test 回归（59 项：cli.test + adapters.test）
-scripts/                 generate-adapters.mjs（多宿主适配器生成器，零依赖）
-dist/                    生成的宿主适配器包（已提交，安装方式见 dist/README.md）
-.github/workflows/       CI：push/PR 自动跑 npm test
+tests/                   node --test 回归（63 项：cli.test + adapters.test）
+scripts/                 generate-adapters.mjs（多宿主适配器生成器，零依赖；--out 可指定输出目录）
+dist/                    生成的宿主适配器包（已提交，安装方式见 dist/README.md；测试守护其与契约源新鲜一致）
+.github/workflows/       CI：ubuntu/windows × Node 20/24 矩阵跑 npm test
 ```
 
 ## 实战排障记录
