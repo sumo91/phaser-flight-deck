@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sumo91/phaser-flight-deck/releases"><img alt="Version 0.6.0" src="https://img.shields.io/badge/version-0.6.0-E4593F?style=flat-square"></a>
+  <a href="https://github.com/sumo91/phaser-flight-deck/releases/tag/v0.6.0"><img alt="Version 0.6.0" src="https://img.shields.io/badge/version-0.6.0-E4593F?style=flat-square"></a>
   <a href="./LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-313131?style=flat-square"></a>
   <a href="./package.json"><img alt="Node >= 20" src="https://img.shields.io/badge/node-%3E%3D20-6B6258?style=flat-square"></a>
   <a href="https://github.com/sumo91/phaser-flight-deck/actions/workflows/test.yml"><img alt="tests" src="https://img.shields.io/github/actions/workflow/status/sumo91/phaser-flight-deck/test.yml?style=flat-square&label=tests"></a>
