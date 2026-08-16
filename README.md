@@ -2,82 +2,56 @@
 
 > **v0.6.0** · 76 tests · MIT License · Node ≥ 20
 
-Agent toolchain for **Phaser 4 web games**: project health checks, v4 API static scanning,
-an API-truth oracle over the bundled type definitions, a narrow-to-broad verification ladder,
-dev-server lifecycle with headless-browser observation, script-driven robot-player playtesting,
-visual regression, and a balance-simulation gate.
-Zero-dependency CLI execution core + a single declarative command registry + a thin Pi extension
-wrapper + project skills and a runtime probe.
+[快速安装](#快速安装) · [玩测剧本](#玩测剧本) · [剧本驱动视觉回归](#剧本驱动视觉回归) · [命令总表](#命令总表) · [仓库结构](#仓库结构)
 
-*English readers: every command prints a bounded JSON envelope (`--json`) with a
-PASSED/FAILED/INCONCLUSIVE/CANCELLED verdict, evidence facts, and deterministic next steps.*
+Agent 接手 Phaser 项目后最爱汇报的一句是"页面渲染正常"。这话经常没人真的看过。tsc 通过只说明类型对，dist 生成只说明产物在，游戏卡在标题屏挂一晚上，这两项照样全绿。这个仓库把"真的看过一眼"做成了命令。
 
-为 **Phaser 4 网页游戏项目**提供健康检查、v4 API 静态扫描、API 事实预言机、
-从窄到宽验证阶梯、dev server 生命周期与无头浏览器观察、剧本驱动机器人玩家玩测、
-视觉回归与平衡模拟门。
+pdeck 是零依赖 CLI，放进任何 agent 的 shell 都能跑。每次执行只回一份有界信封，裁决四种（PASSED / FAILED / INCONCLUSIVE / CANCELLED），后面挂着证据事实和下一步。跑通了什么、什么没跑、为什么拿不准，都写在信封里，模型想含糊也没有位置。浏览器相关命令需要系统 Chrome 或 Edge，缺失时降级为 INCONCLUSIVE 附安装指引，其余命令零依赖直接可用。
 
-设计原则（来自 Godot Flight Deck / Phaser Project Toolkit 实战）：
+*English readers can pass `--json` on any command to get a bounded envelope with a verdict, evidence facts and deterministic next steps.*
 
-- **CLI 单一执行核心**：所有业务逻辑在 `cli/pdeck.mjs`（任意 agent shell 可用）
-- **模型无关性**：结果一律为有界 Result Envelope（PASSED/FAILED/INCONCLUSIVE/CANCELLED + 确定性下一步）
-- **版本即数据**：Phaser 4.2.1 已进入发布静默期——doctor 检查实际安装版本 vs registry 并报告静默期；规则表带版本号
-- **证据与谎言分离**：启动/构建/渲染都要**实测**（HTTP 双栈探测、canvas 尺寸、pid 存活），
-  不把"未验证的启动"或"别人的服务器响应"说成成功
-- **边界**：基建与验证在界内；玩法判断在界外
+## 它做什么
 
-## Requirements
+**先拿到事实。** `verify` 走一条从窄到宽的阶梯，版本一致性、tsc、生产构建、真实浏览器里恰好一个可见 canvas、零页面异常、输入可达，第一处硬失败即定裁决。启动必须实测，HTTP 双栈探测加 pid 存活检查，没验证过的启动和别的服务器的响应都不会被报成成功。doctor 会对照 registry 报告 Phaser 4.2.1 的发布静默期，规则表全部带版本号。
 
-| 需求 | 必需/可选 | 说明 |
-|---|---|---|
-| Node.js ≥ 20 | 必需 | CLI 与扩展运行时 |
-| Google Chrome 或 Edge | 可选 | `verify` / `run snapshot|console|watch|observe|playtest` / `baseline` / `visual-test` 的浏览器证据需要；缺失时优雅降级为 INCONCLUSIVE + 安装指引 |
-| playwright-core | 可选 | 首次 `npm install` 一并安装；缺失时同上降级 |
-| git | 可选 | 仅 `vendor-skills` 需要 |
-| tsx（项目内） | 可选 | 项目的 `.ts` 模拟 harness 需要 |
+**让机器人真的玩。** `run playtest` 用 JSON 剧本在真实 UI 上按键、点击、断言、存值、截图，断言直调项目 DEV 句柄（`window.__game`、`window.__session`），设计逻辑就此挂进玩测。跨步骤对比用 `store` 存值、后续步骤 `{{变量}}` 引用；时序敏感的断言带 `within` 轮询。这两个功能都是被真实失败教出来的，来历见玩测剧本一节。
 
-支持平台：Windows / macOS / Linux（端口预检与进程归属校验跨平台：Windows 用 netstat 双栈 + wmic，POSIX 用 lsof→ss + ps）。
+**数值和画面都看得住。** 核心逻辑零 Phaser 依赖的项目可以无头跑几十个小时挂机，`simulate` 拿 profile 区间当平衡回归门，越界即 FAILED。视觉回归支持剧本驱动，先把游戏推进到战斗中或第 4 天农田这类状态，再采基线、做像素比对。两个真实项目上测过，确定性状态同态 0.00%，战斗画面同态 0.68%，动画帧差就长这个样子。
 
-## Installation（三选一）
+## 快速安装
 
-**方式 A：直接使用（零安装）**
+**A. 直接用（零安装）**
 
 ```bash
-node <本目录>/cli/pdeck.mjs <command> ...      # 无需 npm install，核心命令零依赖
-npm install                                    # 仅浏览器相关命令需要（playwright-core）
+node <本目录>/cli/pdeck.mjs <command> ...      # 核心命令零依赖
+npm install                                    # 浏览器相关命令需要 playwright-core
 ```
 
-**方式 B：全局命令（npm link 或 PATH）**
+**B. 全局命令**
 
 ```bash
-cd <本目录> && npm install && npm link          # 获得全局 pdeck 命令
+cd <本目录> && npm install && npm link          # link 直连仓库，仓库升级自动跟随
 pdeck doctor <项目目录>
-pdeck version
 ```
 
-**方式 C：Pi Agent 集成（Agent 工具 + 技能）**
+**C. Pi Agent 集成**
 
 ```bash
 pi install <本目录>                            # 全局；或 cd <项目> && pi install -l <本目录> 项目级
-# 或手工注册：settings.json 的 extensions 数组加入 <本目录>/extensions/phaser-flight-deck.ts，
-# skills 数组加入 <本目录>/skills/phaser4-flight-deck
 ```
 
-安装后 Pi 会话获得 11 个工具与 3 个命令（见 [Pi 集成](#pi-集成)）。
-**注意**：新工具需要 `/reload` 或重启 Pi 才会出现在会话工具清单里（见 [运维规则](#运维规则)）。
+手工注册则在 settings.json 的 extensions 数组加入 `<本目录>/extensions/phaser-flight-deck.ts`，skills 数组加入 `<本目录>/skills/phaser4-flight-deck`。装完 `/reload`，会话拿到 11 个工具和 3 个命令。
 
-**方式 D：跨工具技能安装（~/.agents/skills，ZCode 等扫描该约定目录的 CLI）**
+**D. 跨工具技能（~/.agents/skills）**
 
 ```bash
 mkdir -p ~/.agents/skills/phaser-flight-deck
 cp <本目录>/skills/phaser4-flight-deck/SKILL.md ~/.agents/skills/phaser-flight-deck/
 ```
 
-技能分发渠道与新鲜度约定：`skills/phaser4-flight-deck/` 是**源**（改这里）；
-`~/.agents/skills/phaser-flight-deck/` 是跨工具**安装位**（升级本工具后重新拷贝一次）；
-`dist/` 下的 Claude Code / Cursor / Codex 技能包由 `npm run generate` 再生成。若同一
-机器上源与安装位并存，加载器会提示同名冲突并取其一——内容一致时无害，想消掉提示
-删安装位或源注册其一即可。全局 `pdeck` 命令若经 `npm link` 安装则始终跟随仓库，
-无需单独升级。
+技能分三处。`skills/phaser4-flight-deck/` 是源，改这里；`~/.agents/skills/phaser-flight-deck/` 是给扫约定目录的 CLI 用的安装位，升级本工具后重拷一次；`dist/` 里 Claude Code、Cursor、Codex 的技能包由 `npm run generate` 再生成。源和安装位并存时加载器会报同名冲突并取其一，内容一致就无害，想消掉提示删掉其中一处注册即可。
+
+平台支持 Windows / macOS / Linux。端口预检和进程归属校验两边都做了，Windows 走 netstat 双栈加 wmic，POSIX 走 lsof、ss 加 ps。
 
 ## 快速开始
 
@@ -90,43 +64,40 @@ pdeck verify <项目>                              # 验证阶梯：tsc→构建
 pdeck run serve <项目>                           # dev server 生命周期（端口预检+双栈实测）
 pdeck run observe <项目>                         # 复合观察：按需起服务→console→自动清理
 pdeck run snapshot http://localhost:5173/
-pdeck run console http://localhost:5173/ --seconds 5
-pdeck run playtest <剧本.json> <项目>               # 机器人玩家玩测（按键/点击/断言/截图剧本）
-pdeck baseline demo <项目>                          # 视觉回归基线（入口态）
+pdeck run playtest <剧本.json> <项目>            # 机器人玩家玩测
+pdeck baseline demo <项目>                       # 视觉回归基线（入口态）
 pdeck baseline battle <项目> --script 剧本.json --at-step 8   # 剧本驱动到游戏内状态再采基线
-pdeck visual-test demo <项目>                       # 与基线像素比对
+pdeck visual-test demo <项目>                    # 与基线像素比对
 pdeck visual-test battle <项目> --script 剧本.json  # 同剧本驱动到同状态后比对
 pdeck simulate <项目>                            # 平衡模拟门（需 test/simulate 契约 + 剖面）
 pdeck regression <项目>                          # 一条命令跑完整全量回归 + json/md 报告
 pdeck init <新目录>                              # 保守脚手架（dry-run 默认，--apply 提交）
 pdeck evidence <项目>                            # 验证证据索引
-pdeck help
 ```
 
-所有命令支持 `--json`（机器可读信封）与 `--timeout`。完整契约：`pdeck describe <command> --json`。
+所有命令支持 `--json` 与 `--timeout`。完整契约用 `pdeck describe <command> --json` 查。
 
-## 命令
+## 命令总表
 
 | 命令 | 职责 | 风险 |
 |---|---|---|
-| `pdeck doctor` | 项目健康：Phaser 识别、版本对照（静默期感知）、工具链、core 隔离 | 只读 |
+| `pdeck doctor` | 项目健康（Phaser 识别、版本对照静默期感知、工具链、core 隔离） | 只读 |
 | `pdeck check` | 19 条 v4 API 规则扫描 + 纹理 key 校验（动态工厂误报抑制） | 只读 |
-| `pdeck api` | d.ts 预言机：query / exists（含已移除 API 交叉核对）/ version / describe | 只读 |
-| `pdeck verify` | 验证阶梯：版本→tsc→构建→真实浏览器→截图证据（.pdeck/） | generated-write |
-| `pdeck run` | serve（端口预检+双栈实测）/ snapshot / console（良性404过滤+环境噪音归类）/ probe / watch / **observe（自动起停复合观察）** / **playtest（剧本驱动机器人玩家：press/hold/click/expect-within/collect/store/capture，设计逻辑注入与断言）** | generated-write |
-| `pdeck baseline` / `visual-test` | 视觉回归：基线截图 + 浏览器解码逐像素比对（阈值/容差可调）；**`--script` + `--at-step` 剧本驱动到游戏内任意可达状态**（走 dev server）；基线互为副本时告警 | generated-write |
-| `pdeck simulate` / `simulate-profile` | 平衡模拟门：项目 test/simulate 契约 + 剖面区间回归检查 | 只读 / 生成写 |
-| `pdeck regression` | **全量回归组合**：doctor→check→verify→simulate→visual 串行 → 一份有界信封 + json/md 报告 | generated-write |
-| `pdeck evidence` | 验证证据索引（裁决/新鲜度/耗时） | 只读 |
+| `pdeck api` | d.ts 预言机（query / exists 含已移除 API 交叉核对 / version / describe） | 只读 |
+| `pdeck verify` | 验证阶梯（版本→tsc→构建→真实浏览器→截图证据，落 .pdeck/） | generated-write |
+| `pdeck run` | serve（端口预检+双栈实测）/ snapshot / console（良性404过滤）/ probe / watch / observe（自动起停复合观察）/ playtest（剧本驱动机器人玩家） | generated-write |
+| `pdeck baseline` / `visual-test` | 视觉回归（基线截图 + 浏览器解码逐像素比对；`--script` + `--at-step` 剧本驱动到游戏内任意可达状态；基线互为副本时告警） | generated-write |
+| `pdeck simulate` / `simulate-profile` | 平衡模拟门（项目 test/simulate 契约 + 剖面区间回归检查） | 只读 / 生成写 |
+| `pdeck regression` | 全量回归组合（doctor→check→verify→simulate→visual 串行，出一份有界信封加 json/md 报告） | generated-write |
+| `pdeck evidence` | 验证证据索引（裁决/新鲜度/耗时/基线健康） | 只读 |
 | `pdeck init` | 保守脚手架（dry-run 默认，--apply 提交；从不代跑 npm install） | project-write |
 | `pdeck vendor-skills` | vendor 官方 skills（git clone 钉版 tag） | host-write |
 
-风险分级与 Pi 确认门：只读（none）直接执行；generated-write 首次触发时三选一授权
-（永久/本次会话/拒绝）；project-write 与 host-write 同样走授权。见 [Pi 集成](#pi-集成)。
+风险分级接 Pi 确认门。只读直接执行；写入类首次触发时三选一（永久授权写 trust.json 可撤销 / 仅本次会话 / 拒绝，300s 窗口），`/pdeck-authorize` 随时可查可调。
 
-## 玩测剧本（run playtest）
+## 玩测剧本
 
-JSON 剧本驱动机器人玩家在**真实 UI** 上玩，并可直接注入设计逻辑断言：
+JSON 剧本让机器人玩家在真实 UI 上玩，顺手把设计逻辑断言进去。这是 StarValley 项目里实测通过的一版，开局、等加载、存起点、向右走、断言位移。
 
 ```json
 {
@@ -134,11 +105,10 @@ JSON 剧本驱动机器人玩家在**真实 UI** 上玩，并可直接注入设�
   "steps": [
     { "do": "wait", "ms": 800 },
     { "do": "press", "key": "Enter" },
-    { "do": "wait", "ms": 2500 },
-    { "do": "expect", "that": "已进入游戏（会话初始化）", "eval": "() => !!(window.__session && window.__session.time)" },
-    { "do": "collect", "that": "起点（借页面全局暂存）", "eval": "() => { const s = window.__game.scene.scenes.find(x => x.scene.key === 'Farm'); window.__pt = { x: s && s.player ? s.player.x : null }; return window.__pt; }" },
+    { "do": "expect", "that": "已进入游戏", "eval": "() => !!(window.__session && window.__session.time)", "within": 4000 },
+    { "do": "store", "as": "startX", "within": 3000, "eval": "() => { const s = window.__game.scene.scenes.find(x => x.scene.key === 'Farm'); return s && s.player ? s.player.x : null; }" },
     { "do": "hold", "key": "d", "ms": 800 },
-    { "do": "expect", "that": "玩家向右移动了", "eval": "() => { const s = window.__game.scene.scenes.find(x => x.scene.key === 'Farm'); return !!s.player && window.__pt !== null && s.player.x > window.__pt.x; }" },
+    { "do": "expect", "that": "玩家向右移动了", "eval": "() => { const s = window.__game.scene.scenes.find(x => x.scene.key === 'Farm'); return !!(s && s.player && s.player.x > {{startX}}); }" },
     { "do": "capture", "as": "moved" }
   ]
 }
@@ -148,57 +118,43 @@ JSON 剧本驱动机器人玩家在**真实 UI** 上玩，并可直接注入设�
 |---|---|---|
 | `press` / `hold` | `key`（hold 另需 `ms` ≤10000） | 键盘；`click` 用 `x,y` 坐标 |
 | `wait` | `ms` | 等待 |
-| `expect` | `that`（描述）、`eval`、可选 `within` | 页面内求值，假值/抛错 → FAILED（事实带步骤号）；`within` 毫秒窗口内**轮询**直到满足——加载/动画时序不再需要手工 wait 试错 |
+| `expect` | `that`、`eval`、可选 `within` | 页面内求值，假值/抛错 → FAILED（事实带步骤号）；`within` 毫秒窗口内轮询直到满足 |
 | `collect` | `that`、`eval` | 页面内求值并作为证据记录（有界） |
-| `store` | `as`（变量名）、`eval`、可选 `within` | 求值存入剧本变量，后续步骤字符串里 `{{变量名}}` 引用（替换为 JSON 字面量）；`within` 轮询到值非空再冻结——场景未就绪不会固化瞬态 `null` |
+| `store` | `as`（变量名）、`eval`、可选 `within` | 求值存入剧本变量，后续步骤字符串里 `{{变量名}}` 引用（替换为 JSON 字面量）；`within` 轮询到值非空再冻结 |
 | `capture` | `as` | 截图落 `.pdeck/captures/playtest-<as>-*.png` |
 
-- `eval` 支持 `'() => …'` 函数串与 `'…'` 纯表达式两种形式；**设计逻辑注入**直调项目暴露的
-  `window.__session` / `window.__game` 等 DEV 句柄
-- **跨步骤对比用 `store` + `{{变量}}`**：如先 `store` 开局金币 `gold0`，日结算后
-  `"eval": "() => window.__session.gold > {{gold0}}"` ——不再需要页面全局暂存的写法
-- 服务生命周期同 observe：`--url` 直连运行中的页面，或自动起停自己的服务
-- 剧本校验（≤64 步、动作/字段合法）在起浏览器之前完成，错误信息带步骤号与 JSON 行列位置
+`eval` 支持 `'() => …'` 函数串和 `'…'` 纯表达式两种形式，在页面里执行，能调项目暴露的任何 DEV 句柄。
 
-## 剧本驱动视觉回归（baseline / visual-test --script）
+`within` 是被失败教出来的。最早的示例剧本连栽三次，全是按了键但状态没就绪。后来在 SwordIdle 又碰上一回，击杀递增断言前面 `wait 4000`，首次击杀偶尔超过四秒，断言就碎。加上 `within 8000` 后这类时序交给轮询消化，超时才失败，失败事实里带实际等待时长和最后一次求值错误。
 
-默认视觉回归只能截 URL 入口态（标题屏）。加 `--script` 后复用玩测内核先把游戏**驱动到任意
-可达状态**（进入战斗/推进到某一天/打开某界面），再采基线/比对；`--at-step N` 只执行剧本前
-N 步（如用 day-cycle 剧本的前 8 步停在"第 4 天农田"）：
+`store` 的 `within` 同样有来历。场景没就绪时存玩家坐标会冻下一个 `null`，插值后 `{{startX}}` 永远是 null，断言必假。所以 store 轮询到值非空才冻结，把瞬态 null 挡在外面。
+
+服务生命周期同 observe，`--url` 直连运行中的页面，否则自动起停自己的服务。剧本校验（≤64 步、动作字段合法）在起浏览器之前完成，错误信息带步骤号。
+
+## 剧本驱动视觉回归
+
+默认的视觉回归只能截 URL 入口态，也就是标题屏。加 `--script` 后复用玩测内核，先把游戏驱动到任意可达状态再采基线、做比对；`--at-step N` 只执行剧本前 N 步，比如用日结算剧本的前 10 步停在"第 4 天农田"。
 
 ```bash
-pdeck baseline day4 <项目> --script test/playtest/day-cycle.json --at-step 8
-pdeck visual-test day4 <项目> --script test/playtest/day-cycle.json --at-step 8
+pdeck baseline day4 <项目> --script test/playtest/day-cycle.json --at-step 10
+pdeck visual-test day4 <项目> --script test/playtest/day-cycle.json --at-step 10
 ```
 
-- 基线与比对**必须同剧本、同 `--at-step`**，保证两边到达同一状态；剧本断言失败时如实
-  FAILED 且不落基线/不比对
-- 剧本态走 dev server（自动起停），入口态默认走 dist 静态服务——两种模式语义不同，勿混用基线
-- 动态画面（战斗/粒子/飘字）天然帧帧不同：同态也会有小差异，按需上调 `--tolerance`（如 0.1）
-- **基线健康审计**：`visual-test` 发现所选基线与其它基线内容完全相同（互为副本的假丰富度）
-  时附 `baseline_duplicate` 告警事实；`pdeck evidence` 同样列出副本组
+- 基线与比对必须同剧本、同 `--at-step`，两边才到得了同一状态。剧本断言失败时如实 FAILED，基线不落盘，比对不执行
+- 剧本态走 dev server（自动起停），入口态默认走 dist 静态服务，两种模式语义不同，基线别混用
+- 动态画面天然帧帧不同，战斗同态 0.68% 属正常，重特效场景按需上调 `--tolerance`（如 0.1）
+- 怀疑"空转通过"时有个直接的验证办法，拿另一个项目的截图冒充基线比一次，93.38% 差异立刻 FAILED。0% 的通过是真的 0%
+- 基线健康审计。两个试用项目里各躺着一组三张基线，哈希一算其实是一张图复制三份，工具当时沉默。现在 `visual-test` 会点名所选基线的副本组，`evidence` 列出全部
 
 ## Pi 集成
 
-安装后 Agent 获得工具：
+安装后会话获得工具 `pdeck_project` · `pdeck_check` · `pdeck_api` · `pdeck_validate` · `pdeck_run` · `pdeck_init` · `pdeck_evidence` · `pdeck_vendor` · `pdeck_visual` · `pdeck_simulate` · `pdeck_regression`，快捷命令 `/pdeck-doctor` · `/pdeck-verify` · `/pdeck-authorize`。写入类操作首次触发走上面说的三选一授权。
 
-`pdeck_project` · `pdeck_check` · `pdeck_api` · `pdeck_validate` · `pdeck_run` · `pdeck_init` ·
-`pdeck_evidence` · `pdeck_vendor` · `pdeck_visual` · `pdeck_simulate` · `pdeck_regression`，
-快捷命令 `/pdeck-doctor` · `/pdeck-verify` · `/pdeck-authorize`。
+## 知识层与多宿主
 
-**授权模型**：写入类操作首次触发时三选一（永久授权写入 trust.json 可撤销 / 仅本次会话 / 拒绝，
-300s 窗口）；`/pdeck-authorize` 可随时预授权或查看状态。
+`skills/phaser4-flight-deck/` 是自研主技能，装的是架构约定（core 零 Phaser 依赖）加实测踩坑录，addCanvas 大纹理 GPU ReadPixels 卡死、纹理按外观规格缓存、场景生命周期顺序、AudioContext 调度死循环、d.ts 残留声明在运行时并不可用、vite 只绑 [::1]。`skills/vendor/` 由 `pdeck vendor-skills` 从 phaserjs/phaser 钉版 tag 引入官方技能（4.0 基线）。
 
-## 知识层
-
-- `skills/phaser4-flight-deck/`：自研主技能——架构约定（core 零 Phaser 依赖）+ **实测踩坑录**
-  （addCanvas 大纹理 GPU ReadPixels 卡死、纹理按规格缓存、场景生命周期、AudioContext 调度死循环、
-  d.ts 残留声明 ≠ 运行时可用、vite 只绑 [::1]、端口共存歧义）+ 平衡模拟与浏览器冒烟模式
-- `skills/vendor/`：`pdeck vendor-skills` 从 phaserjs/phaser 钉版 tag 引入官方技能（4.0 基线）
-
-## 多宿主适配器
-
-`npm run generate` 从单一契约源（`registry/commands.mjs` + 主技能）生成各宿主适配器包（`dist/`，已提交）：
+`npm run generate` 从单一契约源（`registry/commands.mjs` 加主技能）生成各宿主适配器包到 `dist/`（已提交，安装方式见 `dist/README.md`）。适配器只做提示，业务逻辑永远在 CLI 一处。
 
 | 宿主 | 包内容 | 确认门 |
 |---|---|---|
@@ -207,17 +163,15 @@ pdeck visual-test day4 <项目> --script test/playtest/day-cycle.json --at-step 
 | **Codex** | `$HOME/.agents/skills/` 技能包 | prompt 约定 |
 | **Pi** | extensions（11 工具 + trust.json 授权） | 工具内确认门（已有） |
 
-适配器是提示层，不是逻辑层——CLI 永远是唯一执行核心；manual-only，不自动触发。
-安装方式见 `dist/README.md`；一致性由 `tests/adapters.test.mjs` 守护
-（命令覆盖率、宿主差异、MANIFEST 哈希、hooks 拦截清单）。
+一致性由 `tests/adapters.test.mjs` 守护，命令覆盖率、宿主差异、MANIFEST 哈希、hooks 拦截清单都在里面。
 
 ## 运维规则
 
-1. **新工具 = 新会话**：扩展新增/修改工具后，当前会话的工具集是启动快照，需 `/reload` 或重启 Pi 生效（CLI 每次都是新进程，命令层改动立即生效）。
-2. **工具目录路径别移动**：settings.json 里是绝对路径注册；移动后需同步修改 `extensions`/`skills` 数组。
-3. **撤销授权**：删除工具目录 `trust.json`（或其中对应条目）；`/pdeck-authorize` 可查看/调整授权状态。
-4. **vendor-skills 需要 GitHub 可达**：网络受限环境会快速 INCONCLUSIVE；可在可达环境执行后复制 `skills/vendor/`，或按 `skills/vendor/README.md` 手动操作。
-5. **端口冲突策略**：`run serve` 预检拒绝外来占用（避免 localhost URL 歧义），换 `--port` 或先确认占用者；`run observe|playtest` 会自动起停自己的服务，不触碰既有进程——未显式指定端口时若默认口被外部占用（多项目并发开发常态）会自动尝试 5173-5178 候选，显式 `--port` 仍严格拒绝。
+1. **新工具 = 新会话**。扩展新增或修改工具后，当前会话的工具集是启动快照，要 `/reload` 或重启 Pi 才生效。CLI 每次都是新进程，命令层改动立即生效。
+2. **工具目录别移动**。settings.json 里是绝对路径注册，移动后同步改 extensions 和 skills 数组。
+3. **撤销授权**。删除工具目录 `trust.json` 或其中对应条目，`/pdeck-authorize` 可查看。
+4. **vendor-skills 需要 GitHub 可达**。网络受限环境会快速 INCONCLUSIVE，可在可达环境执行后复制 `skills/vendor/`，或按 `skills/vendor/README.md` 手动操作。
+5. **端口冲突策略**。`run serve` 预检拒绝外来占用，避免 localhost URL 歧义，换 `--port` 或先确认占用者。`run observe|playtest` 自己起停自己的服务，未显式指定端口时默认口被占会自动尝试 5173-5178 候选，显式 `--port` 仍严格拒绝。
 
 ## 测试
 
@@ -227,7 +181,9 @@ PDECK_TEST_FIXTURE=<Phaser项目路径> npm test      # 附带真实项目集成
 # 未设置夹具时集成测试自动跳过（58 通过 / 12 跳过）
 ```
 
-## 目录
+CI 是 ubuntu/windows × Node 20/24 矩阵，Windows 专项代码（netstat 双栈、taskkill、npm.cmd、端口回退）每轮都真实执行。
+
+## 仓库结构
 
 ```
 cli/pdeck.mjs            零依赖 CLI 入口（参数解析/嵌套动作路由/信封包装）
@@ -241,22 +197,17 @@ probes/                  运行时探针契约（window.__pdeck，pdeck run prob
 templates/project/       init 脚手架模板（Phaser 4.2.1 钉版）
 tests/                   node --test 回归（76 项：cli.test + adapters.test）
 scripts/                 generate-adapters.mjs（多宿主适配器生成器，零依赖；--out 可指定输出目录）
-dist/                    生成的宿主适配器包（已提交，安装方式见 dist/README.md；测试守护其与契约源新鲜一致）
-.github/workflows/       CI：ubuntu/windows × Node 20/24 矩阵跑 npm test
+dist/                    生成的宿主适配器包（已提交，测试守护其与契约源新鲜一致）
+.github/workflows/       CI 矩阵
 ```
 
-## 实战排障记录
+## 排障记录
 
-见 [CHANGELOG.md](CHANGELOG.md)——Windows spawn/shell、netstat 双栈、vite [::1] 绑定、
-端口共存歧义、npm.cmd 进程孤儿、模型回退与授权模型演进等真实环境坑的定位与对策。
+Windows spawn/shell、netstat 双栈、vite 只绑 [::1]、端口共存歧义、npm.cmd 进程孤儿，这些真实环境坑的定位和对策都在 [CHANGELOG.md](CHANGELOG.md)，按版本翻。
 
 ## Contributing
 
-欢迎提交 issue 与 PR。约定：
-
-- 所有逻辑改动必须过 `npm test`；影响命令契约的改动同步更新 `registry/commands.mjs`（单一契约源）
-- 新增命令遵循：CLI 命令模块（cli/commands/）→ 注册表（registry）→ pdeck.mjs 路由 → 测试 → CHANGELOG
-- 风险分级只增不减：新写入类操作必须声明 risk 并在扩展确认门中处理
+欢迎 issue 和 PR。所有逻辑改动必须过 `npm test`；影响命令契约的改动同步更新 `registry/commands.mjs`（单一契约源）；新增命令走 CLI 命令模块 → 注册表 → pdeck.mjs 路由 → 测试 → CHANGELOG 这条路；风险分级只增不减，新写入类操作必须声明 risk 并在扩展确认门中处理。
 
 ## License
 
