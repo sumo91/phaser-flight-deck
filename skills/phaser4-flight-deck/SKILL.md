@@ -3,8 +3,8 @@ name: phaser4-flight-deck
 description: >
   Phaser 4 项目开发主约定与实测踩坑录。用于：新建/维护 Phaser 4 项目时确立架构与验证流程；
   排查渲染卡死、纹理问题、场景生命周期 bug；搭建可无头模拟的核心逻辑层；
-  使用 pdeck CLI（doctor/check/api）做健康检查与 API 事实查询。
-  触发词：Phaser 4、phaser4、pdeck、纹理卡死、addCanvas、挂机模拟、无头验证。
+  使用 pdeck CLI（doctor/check/api/verify/playtest）做健康检查、API 事实查询与机器人玩测。
+  触发词：Phaser 4、phaser4、pdeck、纹理卡死、addCanvas、挂机模拟、无头验证、玩测剧本、视觉回归。
 ---
 
 # Phaser 4 Flight Deck 主技能
@@ -59,10 +59,30 @@ pdeck check .           # v4 API 静态扫描 + 纹理 key 校验
 pdeck api query <词> .  # d.ts 预言机
 pdeck api exists <词> . # 存在性 + 已移除 API 交叉核对
 pdeck verify .          # 从窄到宽阶梯（tsc→构建→真实浏览器→截图证据）
-pdeck baseline <名> .   # 视觉回归基线
-pdeck visual-test <名> .# 与基线像素比对（容差/阈值可调）
+pdeck run playtest <剧本.json> .          # 机器人玩家玩测（真实 UI 上按键/断言/截图）
+pdeck baseline <名> .                      # 视觉回归基线（入口态）
+pdeck baseline <名> . --script 剧本.json --at-step N   # 剧本驱动到游戏内状态再采基线
+pdeck visual-test <名> .                   # 与基线像素比对（容差/阈值可调）
 pdeck simulate .        # 平衡模拟门（test/simulate 契约 + 剖面区间）
+pdeck regression .      # 全量复合（doctor→check→verify→simulate→visual 一报告）
 ```
+
+**玩测剧本**（pdeck run playtest，JSON `{name, steps}`，≤64 步）——8 种动作：
+`press(key)` `hold(key,ms)` `wait(ms)` `click(x,y)` `expect(that,eval[,within])`
+`collect(that,eval)` `store(as,eval[,within])` `capture(as)`。要点：
+- `eval` 在页面内求值（`'() => …'` 函数串或纯表达式），直调项目 DEV 注入的
+  `window.__game` / `window.__session` 做设计逻辑断言
+- **时序敏感断言必须带 `within`**（毫秒轮询直到为真）——硬 `wait` 猜时长是假失败
+  头号来源（实测：击杀递增断言 wait 4000 偶发失败，within 8000 稳定）
+- **跨步骤对比用 `store` + `{{变量}}`**（替换为 JSON 字面量），别用页面全局暂存；
+  `store` 带 `within` 时轮询到值非空再冻结——场景未就绪会固化瞬态 null
+- 服务自动起停（无 --url 时走 vite dev，端口占用自动回退）；剧本校验先于浏览器
+
+**剧本驱动视觉回归**：`baseline`/`visual-test --script <剧本> --at-step N` 先驱动到
+任意可达状态（进战斗/推进天数/开界面）再截/比——不再只能测标题屏。基线与比对必须
+同剧本同 at-step；剧本断言失败时如实 FAILED 不落基线。真实项目实测基准：确定性状态
+（农田某天）同态 0.00%，动画状态（战斗）同态 ~0.7% 帧差——重特效按需 `--tolerance 0.1`。
+互为副本的基线（一张图复制多份）会被 visual-test/evidence 标 `baseline_duplicate`。
 
 **平衡模拟契约**（pdeck simulate 消费）：项目提供 `test/simulate.mjs|ts`，读 `SIM_HOURS` 环境变量，
 模拟挂机后向 stdout 最后一行输出 JSON 报告：
@@ -72,8 +92,8 @@ pdeck simulate .        # 平衡模拟门（test/simulate 契约 + 剖面区间�
 先 `pdeck simulate-profile` 生成 ±30% 区间（.pdeck/simulate.json），此后数值改动用
 `pdeck simulate` 做**平衡回归门**：越界即 FAILED，刻意调整后重新 profile。
 
-**视觉回归**：`pdeck baseline <名>` 建基准（dist 或 --url），`pdeck visual-test <名>` 用浏览器
-解码两张 PNG 做逐像素比对（threshold 16/容差 0.02 默认），尺寸不一致即 FAILED。
+**视觉比对默认**：threshold 16（每通道差 >16 才计差异）/ 容差 0.02（2% 像素）；
+尺寸不一致即 FAILED；基线落 `.pdeck/baselines/`（gitignore）。
 
 **平衡模拟模式**（核心逻辑无头验证，契约版）：
 ```ts
