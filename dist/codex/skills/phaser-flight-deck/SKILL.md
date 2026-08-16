@@ -26,8 +26,8 @@ node <phaser-flight-deck目录>/cli/pdeck.mjs <command> [args] --json   # 兑底
 | `pdeck verify` | Run the narrow-to-broad verification ladder: version consistency → tsc → build → real browser (canvas/console/input) → screenshot evidence |
 | `pdeck run` | Dev server lifecycle and headless browser observation |
 | `pdeck init` | Conservative project scaffold (dry-run by default; --apply commits; never runs npm install) |
-| `pdeck baseline` | Capture a visual regression baseline screenshot |
-| `pdeck visual-test` | Compare the current screen against a visual baseline (pixel diff, browser-decoded) |
+| `pdeck baseline` | Capture a visual regression baseline screenshot (optionally script-driven to an in-game state) |
+| `pdeck visual-test` | Compare the current screen against a visual baseline (pixel diff, browser-decoded; optionally script-driven) |
 | `pdeck simulate` | Run the project balance-simulation harness and check against the .pdeck profile bands (balance regression gate) |
 | `pdeck simulate-profile` | Generate the balance profile (.pdeck/simulate.json, ±30% bands) from one simulation run |
 | `pdeck regression` | Run the full regression composite: doctor → check → verify → simulate → visual-test → one bounded report (.pdeck/reports/regression-*.json|md) |
@@ -39,7 +39,7 @@ node <phaser-flight-deck目录>/cli/pdeck.mjs <command> [args] --json   # 兑底
 - 技能路径：`$HOME/.agents/skills/phaser-flight-deck/`
 - **确认门**：prompt 约定——写入类命令执行前必须先向用户说明并获同意
 
-_本文件由 scripts/generate-adapters.mjs 自动生成（v0.5.2），勿手改；源文件 skills/phaser4-flight-deck/SKILL.md。_
+_本文件由 scripts/generate-adapters.mjs 自动生成（v0.6.0），勿手改；源文件 skills/phaser4-flight-deck/SKILL.md。_
 
 # Phaser 4 Flight Deck 主技能
 

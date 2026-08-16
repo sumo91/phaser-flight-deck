@@ -275,7 +275,7 @@ function urlHint(errors) {
 // 否则自己起服务并返回 stopNeeded（调用方 finally 负责清理，只清理自己起的）。
 // 未显式指定端口时若默认口被外部进程占用（多项目并发开发的常态），自动尝试后续候选——
 // 这类动作自己起停自己的服务、URL 由自己消费，不存在 serve 的 URL 归属歧义。
-async function autoServerLifecycle(project, port) {
+export async function autoServerLifecycle(project, port) {
   const proj = detectProject(project ?? process.cwd());
   if (!proj.found) {
     return { error: `不是可识别的 Phaser 项目: ${proj.reason}`, hint: ['传项目路径（或 --url 指向运行中的页面）'] };
@@ -310,7 +310,7 @@ async function autoServerLifecycle(project, port) {
   return { error: '默认端口 5173-5178 均被外部进程占用', hint: ['用 --port 指定空闲端口，或 --url 直连运行中的页面'] };
 }
 
-async function stopAutoServer(root, port) {
+export async function stopAutoServer(root, port) {
   if (!root) return;
   await runServe([], { project: root, port, stop: true }).catch(() => {});
 }
@@ -517,20 +517,23 @@ export async function runWatch(args, options) {
 }
 
 // ===== playtest：机器人玩家玩测（剧本驱动真实 UI + 设计逻辑注入）=====
-// 剧本契约：JSON { name, steps: [{do, ...}] }，7 种动作——
+// 剧本契约：JSON { name, steps: [{do, ...}] }，8 种动作——
 //   press(key) / hold(key,ms) / wait(ms) / click(x,y)          输入与等待
-//   expect(that,eval) / collect(that,eval)                     eval 在页面内求值（可调 window.__session 等注入点）
+//   expect(that,eval[,within]) / collect(that,eval)            eval 在页面内求值（可调 window.__session 等注入点）
+//   store(as,eval)                                              求值存入剧本变量，后续步骤字符串用 {{as}} 引用
 //   capture(as)                                                 截图证据
+// expect 可带 within(ms)：窗口内轮询直到满足（加载/动画时序不再需要手工 wait 试错）。
 // 求值/执行抛错或 expect 为假 → FAILED（decisive 为该步）；页面未捕获异常 → FAILED。
 const PLAYTEST_MAX_STEPS = 64;
-const PLAYTEST_KINDS = ['press', 'hold', 'wait', 'click', 'expect', 'collect', 'capture'];
+const PLAYTEST_KINDS = ['press', 'hold', 'wait', 'click', 'expect', 'collect', 'store', 'capture'];
+const PLAYTEST_VAR_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,39}$/;
 const PLAYTEST_HINT = [
-  '剧本：{"name":"冒烟","steps":[{"do":"press","key":"Enter"},{"do":"expect","that":"已开局","eval":"()=> !!window.__game"}]}',
-  '动作：press(key) hold(key,ms) wait(ms) click(x,y) expect/collect(that,eval 页面内求值) capture(as)',
-  '前后对比可借页面全局暂存：eval 里先 "()=>(window.__pt=…)&&true" 再断言比较',
+  '剧本：{"name":"冒烟","steps":[{"do":"press","key":"Enter"},{"do":"expect","that":"已开局","eval":"()=> !!window.__game","within":2000}]}',
+  '动作：press(key) hold(key,ms) wait(ms) click(x,y) expect/collect(that,eval) store(as,eval) capture(as)',
+  'expect 可加 within(ms) 轮询；跨步骤对比用 store 存值、后续 eval 字符串里 {{变量名}} 引用（如 "({g:window.__s.gold}) => g > {{gold0}}"）',
 ];
 
-function loadPlaytestScript(scriptPath) {
+export function loadPlaytestScript(scriptPath) {
   if (!scriptPath) return { error: '缺少剧本路径（pdeck run playtest <script.json> [project]）' };
   if (!existsSync(scriptPath)) return { error: `剧本文件不存在: ${scriptPath}` };
   let parsed;
@@ -552,15 +555,37 @@ function loadPlaytestScript(scriptPath) {
     if (['hold', 'wait'].includes(step.do) && (!Number.isFinite(step.ms) || step.ms < 0 || step.ms > 10000)) return { error: `${label} ${step.do} 的 ms 需为 0..10000` };
     if (step.do === 'click' && (!Number.isFinite(step.x) || !Number.isFinite(step.y))) return { error: `${label} click 需要 x/y 数值` };
     if ((step.do === 'expect' || step.do === 'collect') && typeof step.eval !== 'string') return { error: `${label} ${step.do} 需要 eval（页面内求值表达式）` };
+    if ((step.do === 'expect' || step.do === 'store') && step.within !== undefined && (!Number.isInteger(step.within) || step.within < 0 || step.within > 10000)) {
+      return { error: `${label} ${step.do} 的 within 需为 0..10000 的整数毫秒` };
+    }
+    if (step.do === 'store' && (typeof step.eval !== 'string' || typeof step.as !== 'string' || !PLAYTEST_VAR_PATTERN.test(step.as))) {
+      return { error: `${label} store 需要 eval 与 as（变量名 [A-Za-z0-9_-]，不以连字符开头）` };
+    }
     if (step.do === 'capture' && typeof step.as !== 'string') return { error: `${label} capture 需要 as（截图名）` };
   }
   return { script: { name: typeof parsed.name === 'string' ? parsed.name.slice(0, 40) : 'playtest', steps } };
 }
 
+// 剧本变量插值：把步骤字符串字段里的 {{name}} 替换为已 store 变量的 JSON 字面量；
+// 数值字段（x/y/ms）是 JSON 数字字面量，不参与插值。未定义变量原样保留并上报（步骤将以明确报错失败）。
+export function interpolateVars(step, vars) {
+  const missing = new Set();
+  const resolve = (text) => text.replace(/\{\{\s*([A-Za-z0-9_-]+)\s*\}\}/g, (whole, name) => {
+    if (Object.prototype.hasOwnProperty.call(vars, name)) return JSON.stringify(vars[name]);
+    missing.add(name);
+    return whole;
+  });
+  const out = {};
+  for (const [key, value] of Object.entries(step)) {
+    out[key] = typeof value === 'string' ? resolve(value) : value;
+  }
+  return { step: out, missing: [...missing] };
+}
+
 // 页面内求值：剧本 eval 支持两种写法——'() => …' 函数串（Node 侧构函后由页面调用）
 // 或 '…' 纯表达式（playwright 直接按表达式求值）。字符串直传函数体会被当表达式、
 // 返回函数对象本身（不可序列化 → undefined），必须区分处理。
-async function evalInPage(page, expr) {
+export async function evalInPage(page, expr) {
   const isFunction = /^\s*(?:async\s+)?function\b/.test(expr)
     || /^\s*(?:async\s+)?(?:\((?:[^()]*)\)|[A-Za-z_$][\w$]*)\s*=>/.test(expr);
   if (isFunction) {
@@ -568,6 +593,145 @@ async function evalInPage(page, expr) {
     return page.evaluate(fn);
   }
   return page.evaluate(expr);
+}
+
+// 剧本步骤执行内核（playtest 与 baseline/visual-test --script 共用）：
+// 在已打开的页面上按序执行步骤，返回失败信息/事实/工件/输入日志/剧本变量。
+// ctx.consoleErrors / ctx.pageErrors 为 openPage 采集器，执行完统一折算为失败事实。
+export async function driveSteps(page, steps, ctx) {
+  const { capturesDir, stamp, consoleErrors = [], pageErrors = [] } = ctx;
+  const facts = [];
+  const artifacts = [];
+  const inputLog = [];
+  const vars = {};
+  let failed = null;
+  for (let i = 0; i < steps.length && !failed; i++) {
+    const raw = steps[i];
+    let step;
+    try {
+      const resolved = interpolateVars(raw, vars);
+      step = resolved.step;
+      if (resolved.missing.length) {
+        failed = `第 ${i + 1} 步引用未定义变量: ${resolved.missing.join(', ')}`;
+        facts.push(fact('undefined_var', 'playtest', failed, { actual: { step: i + 1, missing: resolved.missing } }));
+        break;
+      }
+    } catch (error) {
+      failed = `第 ${i + 1} 步变量插值失败: ${error.message}`;
+      break;
+    }
+    try {
+      switch (step.do) {
+        case 'press':
+          await page.keyboard.press(step.key);
+          inputLog.push(`press ${step.key}`);
+          break;
+        case 'hold':
+          await page.keyboard.down(step.key);
+          await sleep(Math.min(step.ms, 10000));
+          await page.keyboard.up(step.key);
+          inputLog.push(`hold ${step.key} ${step.ms}ms`);
+          break;
+        case 'wait':
+          await sleep(Math.min(step.ms, 10000));
+          inputLog.push(`wait ${step.ms}ms`);
+          break;
+        case 'click':
+          await page.mouse.click(step.x, step.y);
+          inputLog.push(`click ${step.x},${step.y}`);
+          break;
+        case 'store': {
+          // 可选 within：轮询到值非 null/undefined 再冻结——场景/资源未就绪时 store 不会把瞬态 null 固化成常量
+          const within = Number.isInteger(step.within) ? Math.min(step.within, 10000) : 0;
+          const startAt = Date.now();
+          let value;
+          let evalError = null;
+          for (;;) {
+            try {
+              value = await evalInPage(page, step.eval);
+              evalError = null;
+            } catch (error) {
+              value = undefined;
+              evalError = error;
+            }
+            if (!within || (value !== null && value !== undefined)) break;
+            if (Date.now() - startAt >= within) break;
+            await sleep(Math.min(250, within - (Date.now() - startAt)));
+          }
+          if (evalError && (value === null || value === undefined)) throw evalError;
+          vars[step.as] = value;
+          facts.push(fact('stored', 'playtest', `${i + 1}. ${step.as} = ${JSON.stringify(value) ?? 'undefined'}`.slice(0, 200), {
+            actual: { name: step.as, value, ...(within ? { within, waitedMs: Date.now() - startAt } : {}) },
+          }));
+          break;
+        }
+        case 'expect': {
+          const within = Number.isInteger(step.within) ? Math.min(step.within, 10000) : 0;
+          const startAt = Date.now();
+          let value;
+          let evalError = null;
+          for (;;) {
+            try {
+              value = await evalInPage(page, step.eval);
+              evalError = null;
+            } catch (error) {
+              value = undefined;
+              evalError = error; // 加载期变量未就绪等瞬态错误：轮询窗口内重试
+            }
+            if (value) break;
+            if (Date.now() - startAt >= within) break;
+            await sleep(Math.min(250, within - (Date.now() - startAt)));
+          }
+          if (!value) {
+            failed = `第 ${i + 1} 步 expect 未满足${within ? `（within ${within}ms 轮询后仍为假）` : ''}: ${step.that ?? step.eval.slice(0, 60)}`;
+            facts.push(fact('expect_failed', 'playtest', `${i + 1}. ${step.that ?? 'eval 为假'}`, {
+              actual: {
+                value: value === undefined ? null : value,
+                eval: step.eval.slice(0, 120),
+                ...(within ? { within, waitedMs: Date.now() - startAt } : {}),
+                ...(evalError ? { evalError: String(evalError.message ?? evalError).slice(0, 160) } : {}),
+              },
+            }));
+          } else {
+            facts.push(fact('expect_ok', 'playtest', `${i + 1}. ${step.that ?? '满足'}${within ? `（轮询 ${Date.now() - startAt}ms 后满足）` : ''}`));
+          }
+          break;
+        }
+        case 'collect': {
+          const value = await evalInPage(page, step.eval);
+          facts.push(fact('collected', 'playtest', `${i + 1}. ${step.that ?? step.eval.slice(0, 60)}`, { actual: value }));
+          break;
+        }
+        case 'capture': {
+          mkdirSync(capturesDir, { recursive: true });
+          const shot = join(capturesDir, `playtest-${step.as}-${stamp}.png`);
+          await page.screenshot({ path: shot });
+          artifacts.push(shot);
+          facts.push(fact('captured', 'playtest', `${i + 1}. ${step.as}`, { actual: { path: shot } }));
+          break;
+        }
+      }
+    } catch (error) {
+      failed = `第 ${i + 1} 步 ${step.do} 执行失败: ${error.message}`;
+      facts.push(fact('step_error', 'playtest', failed, { actual: { step: i + 1, do: step.do } }));
+    }
+  }
+  if (inputLog.length) {
+    facts.push(fact('inputs', 'playtest', `输入序列: ${inputLog.slice(0, 8).join(' → ')}${inputLog.length > 8 ? ' …' : ''}`));
+  }
+  const errors = splitErrors(consoleErrors);
+  if (pageErrors.length) {
+    failed = failed ?? `页面未捕获异常 ${pageErrors.length} 条`;
+    facts.push(fact('page_errors', 'playtest', `页面未捕获异常 ${pageErrors.length} 条`, { actual: collectBounded(pageErrors) }));
+  }
+  if (errors.real.length) {
+    failed = failed ?? `实质性控制台错误 ${errors.real.length} 条`;
+    facts.push(fact('console_errors', 'playtest', `实质性控制台错误 ${errors.real.length} 条`, { actual: collectBounded(errors.real) }));
+  }
+  if (!failed && !pageErrors.length && !errors.real.length) {
+    facts.push(fact('clean', 'playtest', `${steps.length} 步全部执行完毕，无页面异常与实质错误`));
+  }
+  return { failed, facts, artifacts, inputLog, vars };
 }
 
 export async function runPlaytest(args, options) {
@@ -596,10 +760,6 @@ export async function runPlaytest(args, options) {
     return inconclusiveEnvelope('run.playtest', target.error, ['安装系统 Chrome/Edge，或 cd 工具目录 npm install（playwright-core）']);
   }
 
-  const facts = [];
-  const artifacts = [];
-  const inputLog = [];
-  let failed = null;
   try {
     const size = String(viewport ?? '1280x800').split('x').map(Number);
     const view = { width: Number.isFinite(size[0]) ? size[0] : 1280, height: Number.isFinite(size[1]) ? size[1] : 800 };
@@ -609,84 +769,19 @@ export async function runPlaytest(args, options) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const kindCount = {};
     for (const s of steps) kindCount[s.do] = (kindCount[s.do] ?? 0) + 1;
-    facts.push(fact('script', 'run.playtest', `剧本 "${name}" 共 ${steps.length} 步（${Object.entries(kindCount).map(([k, n]) => `${k}×${n}`).join(' ')}）`));
+    const facts = [fact('script', 'run.playtest', `剧本 "${name}" 共 ${steps.length} 步（${Object.entries(kindCount).map(([k, n]) => `${k}×${n}`).join(' ')}）`)];
     if (lifecycleNote) facts.push(fact('lifecycle', 'run.playtest', lifecycleNote));
 
-    for (let i = 0; i < steps.length && !failed; i++) {
-      const step = steps[i];
-      try {
-        switch (step.do) {
-          case 'press':
-            await page.keyboard.press(step.key);
-            inputLog.push(`press ${step.key}`);
-            break;
-          case 'hold':
-            await page.keyboard.down(step.key);
-            await sleep(Math.min(step.ms, 10000));
-            await page.keyboard.up(step.key);
-            inputLog.push(`hold ${step.key} ${step.ms}ms`);
-            break;
-          case 'wait':
-            await sleep(Math.min(step.ms, 10000));
-            inputLog.push(`wait ${step.ms}ms`);
-            break;
-          case 'click':
-            await page.mouse.click(step.x, step.y);
-            inputLog.push(`click ${step.x},${step.y}`);
-            break;
-          case 'expect': {
-            const value = await evalInPage(page, step.eval);
-            if (!value) {
-              failed = `第 ${i + 1} 步 expect 未满足: ${step.that ?? step.eval.slice(0, 60)}`;
-              facts.push(fact('expect_failed', 'run.playtest', `${i + 1}. ${step.that ?? 'eval 为假'}`, {
-                actual: { value: value === undefined ? null : value, eval: step.eval.slice(0, 120) },
-              }));
-            } else {
-              facts.push(fact('expect_ok', 'run.playtest', `${i + 1}. ${step.that ?? '满足'}`));
-            }
-            break;
-          }
-          case 'collect': {
-            const value = await evalInPage(page, step.eval);
-            facts.push(fact('collected', 'run.playtest', `${i + 1}. ${step.that ?? step.eval.slice(0, 60)}`, { actual: value }));
-            break;
-          }
-          case 'capture': {
-            mkdirSync(capturesDir, { recursive: true });
-            const shot = join(capturesDir, `playtest-${step.as}-${stamp}.png`);
-            await page.screenshot({ path: shot });
-            artifacts.push(shot);
-            facts.push(fact('captured', 'run.playtest', `${i + 1}. ${step.as}`, { actual: { path: shot } }));
-            break;
-          }
-        }
-      } catch (error) {
-        failed = `第 ${i + 1} 步 ${step.do} 执行失败: ${error.message}`;
-        facts.push(fact('step_error', 'run.playtest', failed, { actual: { step: i + 1, do: step.do } }));
-      }
-    }
-    if (inputLog.length) {
-      facts.push(fact('inputs', 'run.playtest', `输入序列: ${inputLog.slice(0, 8).join(' → ')}${inputLog.length > 8 ? ' …' : ''}`));
-    }
-    const errors = splitErrors(consoleErrors);
-    if (pageErrors.length) {
-      failed = failed ?? `页面未捕获异常 ${pageErrors.length} 条`;
-      facts.push(fact('page_errors', 'run.playtest', `页面未捕获异常 ${pageErrors.length} 条`, { actual: collectBounded(pageErrors) }));
-    }
-    if (errors.real.length) {
-      failed = failed ?? `实质性控制台错误 ${errors.real.length} 条`;
-      facts.push(fact('console_errors', 'run.playtest', `实质性控制台错误 ${errors.real.length} 条`, { actual: collectBounded(errors.real) }));
-    }
-    if (!failed && !pageErrors.length && !errors.real.length) {
-      facts.push(fact('clean', 'run.playtest', `${steps.length} 步全部执行完毕，无页面异常与实质错误`));
-    }
+    const driven = await driveSteps(page, steps, { capturesDir, stamp, consoleErrors, pageErrors });
+    facts.push(...driven.facts);
+    const failed = driven.failed;
     return envelope(failed ? 'FAILED' : 'PASSED', failed
       ? `玩测失败：${failed}`
       : `玩测通过：剧本 "${name}" ${steps.length} 步全部完成${lifecycleNote ? `（${lifecycleNote}）` : ''}`, {
       kind: 'run.playtest',
       decisiveStage: failed ? 'run.playtest' : undefined,
       facts,
-      artifacts,
+      artifacts: driven.artifacts,
       nextSteps: failed
         ? ['根据 expect_failed/step_error 的步骤号定位剧本与页面行为差异；pdeck run console <url> 观察控制台']
         : ['把 expect 断言加入关键设计逻辑（如 window.__session 状态变化），逐步扩大剧本覆盖'],

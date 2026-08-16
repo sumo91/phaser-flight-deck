@@ -49,6 +49,8 @@ interface ToolParams {
   tag?: string;
   limit?: number;
   name?: string;
+  script?: string;
+  atStep?: number;
   tolerance?: number;
   threshold?: number;
   hours?: number;
@@ -92,6 +94,8 @@ function buildArgs(command: string, params: ToolParams): string[] {
   if (params.seconds !== undefined) args.push("--seconds", String(params.seconds));
   if (params.viewport) args.push("--viewport", params.viewport);
   if (params.query && command === "run") args.push("--query", params.query);
+  if (params.script) args.push("--script", params.script);
+  if (params.atStep !== undefined) args.push("--at-step", String(params.atStep));
   if (params.apply) args.push("--apply");
   if (params.tag) args.push("--tag", params.tag);
   if (params.limit !== undefined) args.push("--limit", String(params.limit));
@@ -314,9 +318,10 @@ export default function phaserFlightDeck(pi: ExtensionAPI) {
     name: "pdeck_run",
     label: "Phaser Run",
     description:
-      "Dev server lifecycle and headless browser observation. runAction=serve starts/stops the project dev server (port pre-check refuses foreign-occupied ports, dual-stack HTTP verification); snapshot takes a screenshot; console collects page/console errors with benign-404 filtering; probe queries window.__pdeck runtime state; watch streams a bounded observation window.",
+      "Dev server lifecycle and headless browser observation. runAction=serve starts/stops the project dev server (port pre-check refuses foreign-occupied ports, dual-stack HTTP verification); snapshot takes a screenshot; console collects page/console errors with benign-404 filtering; probe queries window.__pdeck runtime state; watch streams a bounded observation window; playtest drives a robot player through a JSON script (press/hold/wait/click/expect-within/collect/store/capture) against the real UI with screenshot evidence.",
     parameters: Type.Object({
       runAction: fieldSchema("runAction"),
+      script: fieldSchema("script"),
       project: fieldSchema("project"),
       url: fieldSchema("url"),
       output: fieldSchema("output"),
@@ -329,7 +334,7 @@ export default function phaserFlightDeck(pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params: ToolParams, _signal, _onUpdate, ctx: ExtensionContext) {
       const action = params.runAction ?? "serve";
-      const writes = action === "snapshot";
+      const writes = action === "snapshot" || action === "playtest";
       const gate = await requireConfirmation(ctx, "pdeck_run", action, params.project ?? ctx.cwd,
         writes ? "snapshot 将把截图写入 .pdeck/captures。" : `${action} 为只读观察（serve 会启动/停止本项目的 dev server）。`);
       if (gate.denied) return { content: [{ type: "text" as const, text: `拒绝执行: ${gate.denied}` }], details: { verdict: "CANCELLED" } };
@@ -398,10 +403,12 @@ export default function phaserFlightDeck(pi: ExtensionAPI) {
     name: "pdeck_visual",
     label: "Phaser Visual",
     description:
-      "Visual regression for Phaser games. visualAction=baseline captures a reference screenshot (.pdeck/baselines/<name>.png) from dist or a running URL; visualAction=test captures the current screen and compares pixel-by-pixel against the baseline (browser-decoded PNG, threshold 16 default, tolerance 0.02 default). generated-write risk; writes only into .pdeck/.",
+      "Visual regression for Phaser games. visualAction=baseline captures a reference screenshot (.pdeck/baselines/<name>.png) from dist or a running URL; visualAction=test captures the current screen and compares pixel-by-pixel against the baseline (browser-decoded PNG, threshold 16 default, tolerance 0.02 default). With script+atStep both actions are script-driven: a playtest script prefix drives the game to an in-game state before capture/compare (dev server), so visual regression is no longer limited to the URL entry screen. generated-write risk; writes only into .pdeck/.",
     parameters: Type.Object({
       visualAction: fieldSchema("visualAction"),
       name: fieldSchema("name"),
+      script: fieldSchema("script"),
+      atStep: fieldSchema("atStep"),
       project: fieldSchema("project"),
       url: fieldSchema("url"),
       viewport: fieldSchema("viewport"),

@@ -11,7 +11,8 @@ import { envelope, renderEnvelope, boundedText, failureEnvelope } from '../cli/r
 import { scanSource, textureKeyFindings, V4_RULES } from '../cli/lib/rules-v4.mjs';
 import { splitErrors, splitWarnings } from '../cli/lib/console-filter.mjs';
 import { countChangedPixels } from '../cli/lib/visual-diff.mjs';
-import { parseSsListenPids, pidsByPort, processCommandLine } from '../cli/commands/run.mjs';
+import { parseSsListenPids, pidsByPort, processCommandLine, driveSteps, interpolateVars } from '../cli/commands/run.mjs';
+import { baselineDuplicateGroups } from '../cli/commands/visual.mjs';
 import { pruneEvidenceFiles } from '../cli/commands/verify.mjs';
 import { detectProject } from '../cli/lib/phaser-project.mjs';
 import { quietPeriodDays } from '../cli/lib/registry-lookup.mjs';
@@ -297,6 +298,140 @@ test('集成: playtest 真实 Phaser 项目（项目无关冒烟剧本）', { sk
   const out = pdeck(['run', 'playtest', scriptPath, FIXTURE], FIXTURE, 300000);
   assert.match(out, /verdict: PASSED/);
   assert.match(out, /expect_ok/);
+});
+
+// ===== v0.6.0：expect-within 轮询 / store 变量插值 / 剧本驱动视觉回归 / 基线查重 =====
+test('playtest: within/store 剧本校验（越界/缺字段）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-ptv6-'));
+  writeFileSync(join(dir, 'within.json'), JSON.stringify({ steps: [{ do: 'expect', eval: '()=>true', within: 20000 }] }));
+  assert.match(pdeck(['run', 'playtest', join(dir, 'within.json'), dir]), /within 需为 0..10000/);
+  writeFileSync(join(dir, 'within2.json'), JSON.stringify({ steps: [{ do: 'expect', eval: '()=>true', within: 1.5 }] }));
+  assert.match(pdeck(['run', 'playtest', join(dir, 'within2.json'), dir]), /within 需为 0..10000/);
+  writeFileSync(join(dir, 'store.json'), JSON.stringify({ steps: [{ do: 'store', eval: '()=>1' }] }));
+  assert.match(pdeck(['run', 'playtest', join(dir, 'store.json'), dir]), /store 需要 eval 与 as/);
+  writeFileSync(join(dir, 'store2.json'), JSON.stringify({ steps: [{ do: 'store', eval: '()=>1', as: '-bad' }] }));
+  assert.match(pdeck(['run', 'playtest', join(dir, 'store2.json'), dir]), /store 需要 eval 与 as/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('interpolateVars: {{变量}} 替换为 JSON 字面量；未定义变量上报', () => {
+  const { step, missing } = interpolateVars(
+    { do: 'expect', that: '金币超过 {{gold0}}（{{name}}）', eval: '() => globalThis.__gold > {{gold0}}' },
+    { gold0: 100, name: '冒险者' },
+  );
+  assert.equal(step.eval, '() => globalThis.__gold > 100');
+  assert.equal(step.that, '金币超过 100（"冒险者"）', '所有字符串字段统一替换为 JSON 字面量（字符串带引号，可预期）');
+  assert.deepEqual(missing, []);
+  const stringified = interpolateVars({ do: 'expect', eval: '() => {{name}}' }, { name: '冒险者' });
+  assert.equal(stringified.step.eval, '() => "冒险者"', '字符串替换为带引号 JSON 字面量（可直接嵌入表达式）');
+  const bad = interpolateVars({ do: 'expect', eval: '() => {{nope}} > 1' }, { gold0: 100 });
+  assert.deepEqual(bad.missing, ['nope']);
+  assert.equal(bad.step.eval, '() => {{nope}} > 1', '未定义变量原样保留（步骤将以明确报错失败）');
+});
+
+// driveSteps 桩页面：evaluate 收到的是真实函数（evalInPage 已构函）——直接调用，
+// 函数体只引用 globalThis（与 (0,eval) 的全局作用域一致）
+function stubPage(state) {
+  return {
+    keyboard: { press: async (k) => { state.keys.push(k); }, down: async () => {}, up: async () => {} },
+    mouse: { click: async (x, y) => { state.clicks.push([x, y]); } },
+    screenshot: async ({ path }) => { state.shots.push(path); },
+    evaluate: async (arg) => (typeof arg === 'function' ? arg() : state.expr?.(arg)),
+  };
+}
+
+test('driveSteps: expect-within 轮询直到满足（瞬态假值不再一击致命）', { timeout: 30000 }, async () => {
+  globalThis.__pdeckCalls = 0;
+  const page = stubPage({ keys: [], clicks: [], shots: [] });
+  const r = await driveSteps(page, [
+    { do: 'expect', that: '第三次起为真', eval: '() => (++globalThis.__pdeckCalls) >= 3', within: 4000 },
+  ], { capturesDir: tmpdir(), stamp: 't' });
+  assert.equal(r.failed, null);
+  assert.ok(globalThis.__pdeckCalls >= 3, `应轮询至少 3 次（实际 ${globalThis.__pdeckCalls}）`);
+  assert.match(r.facts.find((f) => f.classification === 'expect_ok').summary, /轮询 \d+ms 后满足/);
+  delete globalThis.__pdeckCalls;
+});
+
+test('driveSteps: within 超时如实失败并报告等待时长', { timeout: 30000 }, async () => {
+  const page = stubPage({ keys: [], clicks: [], shots: [] });
+  const r = await driveSteps(page, [
+    { do: 'expect', that: '永远为假', eval: '() => false', within: 300 },
+  ], { capturesDir: tmpdir(), stamp: 't' });
+  assert.match(r.failed, /within 300ms 轮询后仍为假/);
+  const factFailed = r.facts.find((f) => f.classification === 'expect_failed');
+  assert.equal(factFailed.actual.within, 300);
+  assert.ok(factFailed.actual.waitedMs >= 300);
+});
+
+test('driveSteps: store 存值 → {{变量}} 跨步骤引用；未定义变量明确报错', { timeout: 30000 }, async () => {
+  globalThis.__gold = 150;
+  const page = stubPage({ keys: [], clicks: [], shots: [] });
+  const ok = await driveSteps(page, [
+    { do: 'store', as: 'gold0', eval: '() => globalThis.__gold - 50' },
+    { do: 'press', key: 'Enter' },
+    { do: 'expect', that: '金币超过开局值', eval: '() => globalThis.__gold > {{gold0}}' },
+  ], { capturesDir: tmpdir(), stamp: 't' });
+  assert.equal(ok.failed, null);
+  assert.ok(ok.facts.some((f) => f.classification === 'stored' && f.summary.includes('gold0 = 100')));
+  assert.ok(ok.facts.some((f) => f.classification === 'expect_ok'));
+
+  const bad = await driveSteps(page, [
+    { do: 'expect', eval: '() => {{nope}} > 1' },
+  ], { capturesDir: tmpdir(), stamp: 't' });
+  assert.match(bad.failed, /引用未定义变量: nope/);
+  delete globalThis.__gold;
+});
+
+test('driveSteps: store within 轮询到非空再冻结（瞬态 null 不被固化）', { timeout: 30000 }, async () => {
+  globalThis.__readyAt = Date.now() + 350; // 350ms 后资源就绪
+  const page = stubPage({ keys: [], clicks: [], shots: [] });
+  const r = await driveSteps(page, [
+    { do: 'store', as: 'x0', within: 3000, eval: '() => (Date.now() >= globalThis.__readyAt ? 42 : null)' },
+    { do: 'expect', that: '起点已冻结为就绪值', eval: '() => {{x0}} === 42' },
+  ], { capturesDir: tmpdir(), stamp: 't' });
+  assert.equal(r.failed, null);
+  const stored = r.facts.find((f) => f.classification === 'stored');
+  assert.equal(stored.actual.value, 42, 'store 应等到非空值 42');
+  assert.ok(stored.actual.waitedMs >= 300, `应等待至少 300ms（实际 ${stored.actual.waitedMs}）`);
+  delete globalThis.__readyAt;
+});
+
+test('driveSteps: store within 超时保存最终 null（下游断言如实失败）', { timeout: 30000 }, async () => {
+  const page = stubPage({ keys: [], clicks: [], shots: [] });
+  const r = await driveSteps(page, [
+    { do: 'store', as: 'never', within: 250, eval: '() => null' },
+    { do: 'expect', eval: '() => {{never}} !== null' },
+  ], { capturesDir: tmpdir(), stamp: 't' });
+  assert.match(r.failed, /第 2 步 expect 未满足/);
+  assert.equal(r.vars.never, null);
+});
+
+test('baselineDuplicateGroups: 内容相同即副本组；独图不入组', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pdeck-dup-'));
+  const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+  writeFileSync(join(dir, 'a.png'), bytes);
+  writeFileSync(join(dir, 'b.png'), bytes);
+  writeFileSync(join(dir, 'c.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 9, 9, 9]));
+  assert.deepEqual(baselineDuplicateGroups(dir), [['a', 'b']]);
+  writeFileSync(join(dir, 'd.png'), bytes);
+  assert.deepEqual(baselineDuplicateGroups(dir), [['a', 'b', 'd']]);
+  assert.deepEqual(baselineDuplicateGroups(join(dir, 'nope')), [], '不存在的目录按无重复处理');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('集成: baseline --script 剧本驱动基线 + visual-test --script 同态比对（游戏内状态）', { skip: !hasFixture, timeout: 420000 }, () => {
+  const scriptPath = join(tmpdir(), 'pdeck-vis-fixture.json');
+  writeFileSync(scriptPath, JSON.stringify({ name: 'vis-state', steps: [
+    { do: 'wait', ms: 1500 },
+    { do: 'expect', that: 'canvas 已渲染', eval: "() => document.querySelectorAll('canvas').length > 0", within: 3000 },
+  ]}));
+  const out1 = pdeck(['baseline', 'scripted', '--script', scriptPath, '--project', FIXTURE], FIXTURE, 420000);
+  assert.match(out1, /verdict: PASSED/);
+  assert.match(out1, /script_prefix/);
+  assert.match(out1, /剧本 "vis-state" 驱动前 2\/2 步/);
+  const out2 = pdeck(['visual-test', 'scripted', '--script', scriptPath, '--project', FIXTURE], FIXTURE, 420000);
+  assert.match(out2, /verdict: PASSED/);
+  assert.match(out2, /script_prefix/);
 });
 
 // ===== 视觉比对纯逻辑（无浏览器，CI 可跑——浏览器路径经 toString 复用同一实现）=====

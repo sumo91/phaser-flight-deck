@@ -1,6 +1,6 @@
 # Phaser Flight Deck
 
-> **v0.5.2** · 67 tests · MIT License · Node ≥ 20
+> **v0.6.0** · 76 tests · MIT License · Node ≥ 20
 
 Agent toolchain for **Phaser 4 web games**: project health checks, v4 API static scanning,
 an API-truth oracle over the bundled type definitions, a narrow-to-broad verification ladder,
@@ -78,8 +78,10 @@ pdeck run observe <项目>                         # 复合观察：按需起服
 pdeck run snapshot http://localhost:5173/
 pdeck run console http://localhost:5173/ --seconds 5
 pdeck run playtest <剧本.json> <项目>               # 机器人玩家玩测（按键/点击/断言/截图剧本）
-pdeck baseline demo <项目>                       # 视觉回归基线
-pdeck visual-test demo <项目>                    # 与基线像素比对
+pdeck baseline demo <项目>                          # 视觉回归基线（入口态）
+pdeck baseline battle <项目> --script 剧本.json --at-step 8   # 剧本驱动到游戏内状态再采基线
+pdeck visual-test demo <项目>                       # 与基线像素比对
+pdeck visual-test battle <项目> --script 剧本.json  # 同剧本驱动到同状态后比对
 pdeck simulate <项目>                            # 平衡模拟门（需 test/simulate 契约 + 剖面）
 pdeck regression <项目>                          # 一条命令跑完整全量回归 + json/md 报告
 pdeck init <新目录>                              # 保守脚手架（dry-run 默认，--apply 提交）
@@ -97,8 +99,8 @@ pdeck help
 | `pdeck check` | 19 条 v4 API 规则扫描 + 纹理 key 校验（动态工厂误报抑制） | 只读 |
 | `pdeck api` | d.ts 预言机：query / exists（含已移除 API 交叉核对）/ version / describe | 只读 |
 | `pdeck verify` | 验证阶梯：版本→tsc→构建→真实浏览器→截图证据（.pdeck/） | generated-write |
-| `pdeck run` | serve（端口预检+双栈实测）/ snapshot / console（良性404过滤+环境噪音归类）/ probe / watch / **observe（自动起停复合观察）** / **playtest（剧本驱动机器人玩家：press/hold/click/expect/collect/capture，设计逻辑注入与断言）** | generated-write |
-| `pdeck baseline` / `visual-test` | 视觉回归：基线截图 + 浏览器解码逐像素比对（阈值/容差可调） | generated-write |
+| `pdeck run` | serve（端口预检+双栈实测）/ snapshot / console（良性404过滤+环境噪音归类）/ probe / watch / **observe（自动起停复合观察）** / **playtest（剧本驱动机器人玩家：press/hold/click/expect-within/collect/store/capture，设计逻辑注入与断言）** | generated-write |
+| `pdeck baseline` / `visual-test` | 视觉回归：基线截图 + 浏览器解码逐像素比对（阈值/容差可调）；**`--script` + `--at-step` 剧本驱动到游戏内任意可达状态**（走 dev server）；基线互为副本时告警 | generated-write |
 | `pdeck simulate` / `simulate-profile` | 平衡模拟门：项目 test/simulate 契约 + 剖面区间回归检查 | 只读 / 生成写 |
 | `pdeck regression` | **全量回归组合**：doctor→check→verify→simulate→visual 串行 → 一份有界信封 + json/md 报告 | generated-write |
 | `pdeck evidence` | 验证证据索引（裁决/新鲜度/耗时） | 只读 |
@@ -132,14 +134,35 @@ JSON 剧本驱动机器人玩家在**真实 UI** 上玩，并可直接注入设�
 |---|---|---|
 | `press` / `hold` | `key`（hold 另需 `ms` ≤10000） | 键盘；`click` 用 `x,y` 坐标 |
 | `wait` | `ms` | 等待 |
-| `expect` | `that`（描述）、`eval` | 页面内求值，假值/抛错 → FAILED（事实带步骤号） |
+| `expect` | `that`（描述）、`eval`、可选 `within` | 页面内求值，假值/抛错 → FAILED（事实带步骤号）；`within` 毫秒窗口内**轮询**直到满足——加载/动画时序不再需要手工 wait 试错 |
 | `collect` | `that`、`eval` | 页面内求值并作为证据记录（有界） |
+| `store` | `as`（变量名）、`eval`、可选 `within` | 求值存入剧本变量，后续步骤字符串里 `{{变量名}}` 引用（替换为 JSON 字面量）；`within` 轮询到值非空再冻结——场景未就绪不会固化瞬态 `null` |
 | `capture` | `as` | 截图落 `.pdeck/captures/playtest-<as>-*.png` |
 
 - `eval` 支持 `'() => …'` 函数串与 `'…'` 纯表达式两种形式；**设计逻辑注入**直调项目暴露的
-  `window.__session` / `window.__game` 等 DEV 句柄（前后对比可借页面全局暂存）
+  `window.__session` / `window.__game` 等 DEV 句柄
+- **跨步骤对比用 `store` + `{{变量}}`**：如先 `store` 开局金币 `gold0`，日结算后
+  `"eval": "() => window.__session.gold > {{gold0}}"` ——不再需要页面全局暂存的写法
 - 服务生命周期同 observe：`--url` 直连运行中的页面，或自动起停自己的服务
 - 剧本校验（≤64 步、动作/字段合法）在起浏览器之前完成，错误信息带步骤号与 JSON 行列位置
+
+## 剧本驱动视觉回归（baseline / visual-test --script）
+
+默认视觉回归只能截 URL 入口态（标题屏）。加 `--script` 后复用玩测内核先把游戏**驱动到任意
+可达状态**（进入战斗/推进到某一天/打开某界面），再采基线/比对；`--at-step N` 只执行剧本前
+N 步（如用 day-cycle 剧本的前 8 步停在"第 4 天农田"）：
+
+```bash
+pdeck baseline day4 <项目> --script test/playtest/day-cycle.json --at-step 8
+pdeck visual-test day4 <项目> --script test/playtest/day-cycle.json --at-step 8
+```
+
+- 基线与比对**必须同剧本、同 `--at-step`**，保证两边到达同一状态；剧本断言失败时如实
+  FAILED 且不落基线/不比对
+- 剧本态走 dev server（自动起停），入口态默认走 dist 静态服务——两种模式语义不同，勿混用基线
+- 动态画面（战斗/粒子/飘字）天然帧帧不同：同态也会有小差异，按需上调 `--tolerance`（如 0.1）
+- **基线健康审计**：`visual-test` 发现所选基线与其它基线内容完全相同（互为副本的假丰富度）
+  时附 `baseline_duplicate` 告警事实；`pdeck evidence` 同样列出副本组
 
 ## Pi 集成
 
@@ -185,9 +208,9 @@ JSON 剧本驱动机器人玩家在**真实 UI** 上玩，并可直接注入设�
 ## 测试
 
 ```bash
-npm test                                          # 67 项 = 61 CLI 回归 + 6 适配器一致性（校验已提交的 dist）
+npm test                                          # 76 项 = 70 CLI 回归 + 6 适配器一致性（校验已提交的 dist）
 PDECK_TEST_FIXTURE=<Phaser项目路径> npm test      # 附带真实项目集成（verify 阶梯、serve 生命周期、视觉自比对、模拟门、玩测）
-# 未设置夹具时集成测试自动跳过（56 通过 / 11 跳过）
+# 未设置夹具时集成测试自动跳过（58 通过 / 12 跳过）
 ```
 
 ## 目录
@@ -202,7 +225,7 @@ extensions/              Pi 薄封装扩展（参数映射+确认门+Envelope �
 skills/                  自研主技能 + 官方技能 vendor
 probes/                  运行时探针契约（window.__pdeck，pdeck run probe 消费）
 templates/project/       init 脚手架模板（Phaser 4.2.1 钉版）
-tests/                   node --test 回归（67 项：cli.test + adapters.test）
+tests/                   node --test 回归（76 项：cli.test + adapters.test）
 scripts/                 generate-adapters.mjs（多宿主适配器生成器，零依赖；--out 可指定输出目录）
 dist/                    生成的宿主适配器包（已提交，安装方式见 dist/README.md；测试守护其与契约源新鲜一致）
 .github/workflows/       CI：ubuntu/windows × Node 20/24 矩阵跑 npm test
