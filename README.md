@@ -65,6 +65,20 @@ pi install <本目录>                            # 全局；或 cd <项目> && 
 安装后 Pi 会话获得 11 个工具与 3 个命令（见 [Pi 集成](#pi-集成)）。
 **注意**：新工具需要 `/reload` 或重启 Pi 才会出现在会话工具清单里（见 [运维规则](#运维规则)）。
 
+**方式 D：跨工具技能安装（~/.agents/skills，ZCode 等扫描该约定目录的 CLI）**
+
+```bash
+mkdir -p ~/.agents/skills/phaser-flight-deck
+cp <本目录>/skills/phaser4-flight-deck/SKILL.md ~/.agents/skills/phaser-flight-deck/
+```
+
+技能分发渠道与新鲜度约定：`skills/phaser4-flight-deck/` 是**源**（改这里）；
+`~/.agents/skills/phaser-flight-deck/` 是跨工具**安装位**（升级本工具后重新拷贝一次）；
+`dist/` 下的 Claude Code / Cursor / Codex 技能包由 `npm run generate` 再生成。若同一
+机器上源与安装位并存，加载器会提示同名冲突并取其一——内容一致时无害，想消掉提示
+删安装位或源注册其一即可。全局 `pdeck` 命令若经 `npm link` 安装则始终跟随仓库，
+无需单独升级。
+
 ## 快速开始
 
 ```bash
